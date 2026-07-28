@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		88EE30C44DDC683E95B7097E /* Pods_RoxMovementAnalyzerUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F2F9B0CCA99823685E46653 /* Pods_RoxMovementAnalyzerUITests.framework */; };
+		941189C4E79E7D61AFDC947D /* Pods_RoxMovementAnalyzer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A361BDC031BBA6988FCD03DC /* Pods_RoxMovementAnalyzer.framework */; };
+		F89EB653F7A1856C61A8B44E /* Pods_RoxMovementAnalyzerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AB878E56535CF80E859AEA4A /* Pods_RoxMovementAnalyzerTests.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		5D0DAE07301701E400027355 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,24 +30,39 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		135F3942C0B7FAA55DA93854 /* Pods-RoxMovementAnalyzer.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RoxMovementAnalyzer.release.xcconfig"; path = "Target Support Files/Pods-RoxMovementAnalyzer/Pods-RoxMovementAnalyzer.release.xcconfig"; sourceTree = "<group>"; };
+		3056C4741182460BD247A396 /* Pods-RoxMovementAnalyzer.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RoxMovementAnalyzer.debug.xcconfig"; path = "Target Support Files/Pods-RoxMovementAnalyzer/Pods-RoxMovementAnalyzer.debug.xcconfig"; sourceTree = "<group>"; };
+		4F2F9B0CCA99823685E46653 /* Pods_RoxMovementAnalyzerUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RoxMovementAnalyzerUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		5D0DADF8301701E200027355 /* RoxMovementAnalyzer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RoxMovementAnalyzer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5D0DAE06301701E400027355 /* RoxMovementAnalyzerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RoxMovementAnalyzerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5D0DAE10301701E400027355 /* RoxMovementAnalyzerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RoxMovementAnalyzerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8737C8FFA4238EC8FDA5290A /* Pods-RoxMovementAnalyzerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RoxMovementAnalyzerTests.debug.xcconfig"; path = "Target Support Files/Pods-RoxMovementAnalyzerTests/Pods-RoxMovementAnalyzerTests.debug.xcconfig"; sourceTree = "<group>"; };
+		8DA548C2449906CC390738D6 /* Pods-RoxMovementAnalyzerUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RoxMovementAnalyzerUITests.debug.xcconfig"; path = "Target Support Files/Pods-RoxMovementAnalyzerUITests/Pods-RoxMovementAnalyzerUITests.debug.xcconfig"; sourceTree = "<group>"; };
+		A361BDC031BBA6988FCD03DC /* Pods_RoxMovementAnalyzer.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RoxMovementAnalyzer.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB878E56535CF80E859AEA4A /* Pods_RoxMovementAnalyzerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RoxMovementAnalyzerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		B2122115C29DB1B0C2809118 /* Pods-RoxMovementAnalyzerUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RoxMovementAnalyzerUITests.release.xcconfig"; path = "Target Support Files/Pods-RoxMovementAnalyzerUITests/Pods-RoxMovementAnalyzerUITests.release.xcconfig"; sourceTree = "<group>"; };
+		EEC5D3666306E0240B471DCC /* Pods-RoxMovementAnalyzerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RoxMovementAnalyzerTests.release.xcconfig"; path = "Target Support Files/Pods-RoxMovementAnalyzerTests/Pods-RoxMovementAnalyzerTests.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5D0DADFA301701E200027355 /* RoxMovementAnalyzer */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = RoxMovementAnalyzer;
 			sourceTree = "<group>";
 		};
 		5D0DAE09301701E400027355 /* RoxMovementAnalyzerTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = RoxMovementAnalyzerTests;
 			sourceTree = "<group>";
 		};
 		5D0DAE13301701E400027355 /* RoxMovementAnalyzerUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = RoxMovementAnalyzerUITests;
 			sourceTree = "<group>";
 		};
@@ -52,6 +73,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				941189C4E79E7D61AFDC947D /* Pods_RoxMovementAnalyzer.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -59,6 +81,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F89EB653F7A1856C61A8B44E /* Pods_RoxMovementAnalyzerTests.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -66,12 +89,27 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				88EE30C44DDC683E95B7097E /* Pods_RoxMovementAnalyzerUITests.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		5474E1DE09048FBC97B86852 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				3056C4741182460BD247A396 /* Pods-RoxMovementAnalyzer.debug.xcconfig */,
+				135F3942C0B7FAA55DA93854 /* Pods-RoxMovementAnalyzer.release.xcconfig */,
+				8737C8FFA4238EC8FDA5290A /* Pods-RoxMovementAnalyzerTests.debug.xcconfig */,
+				EEC5D3666306E0240B471DCC /* Pods-RoxMovementAnalyzerTests.release.xcconfig */,
+				8DA548C2449906CC390738D6 /* Pods-RoxMovementAnalyzerUITests.debug.xcconfig */,
+				B2122115C29DB1B0C2809118 /* Pods-RoxMovementAnalyzerUITests.release.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
+			sourceTree = "<group>";
+		};
 		5D0DADEF301701E200027355 = {
 			isa = PBXGroup;
 			children = (
@@ -79,6 +117,8 @@
 				5D0DAE09301701E400027355 /* RoxMovementAnalyzerTests */,
 				5D0DAE13301701E400027355 /* RoxMovementAnalyzerUITests */,
 				5D0DADF9301701E200027355 /* Products */,
+				5474E1DE09048FBC97B86852 /* Pods */,
+				E94F9D2E7F6A0F0D1E49D37F /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -92,6 +132,16 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		E94F9D2E7F6A0F0D1E49D37F /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A361BDC031BBA6988FCD03DC /* Pods_RoxMovementAnalyzer.framework */,
+				AB878E56535CF80E859AEA4A /* Pods_RoxMovementAnalyzerTests.framework */,
+				4F2F9B0CCA99823685E46653 /* Pods_RoxMovementAnalyzerUITests.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -99,6 +149,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5D0DAE1A301701E400027355 /* Build configuration list for PBXNativeTarget "RoxMovementAnalyzer" */;
 			buildPhases = (
+				D9D4C6CB2C07C40EF4A3A61F /* [CP] Check Pods Manifest.lock */,
 				5D0DADF4301701E200027355 /* Sources */,
 				5D0DADF5301701E200027355 /* Frameworks */,
 				5D0DADF6301701E200027355 /* Resources */,
@@ -111,8 +162,6 @@
 				5D0DADFA301701E200027355 /* RoxMovementAnalyzer */,
 			);
 			name = RoxMovementAnalyzer;
-			packageProductDependencies = (
-			);
 			productName = RoxMovementAnalyzer;
 			productReference = 5D0DADF8301701E200027355 /* RoxMovementAnalyzer.app */;
 			productType = "com.apple.product-type.application";
@@ -121,6 +170,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5D0DAE1D301701E400027355 /* Build configuration list for PBXNativeTarget "RoxMovementAnalyzerTests" */;
 			buildPhases = (
+				D020076A9CE3A7039750278B /* [CP] Check Pods Manifest.lock */,
 				5D0DAE02301701E400027355 /* Sources */,
 				5D0DAE03301701E400027355 /* Frameworks */,
 				5D0DAE04301701E400027355 /* Resources */,
@@ -134,8 +184,6 @@
 				5D0DAE09301701E400027355 /* RoxMovementAnalyzerTests */,
 			);
 			name = RoxMovementAnalyzerTests;
-			packageProductDependencies = (
-			);
 			productName = RoxMovementAnalyzerTests;
 			productReference = 5D0DAE06301701E400027355 /* RoxMovementAnalyzerTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -144,6 +192,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5D0DAE20301701E400027355 /* Build configuration list for PBXNativeTarget "RoxMovementAnalyzerUITests" */;
 			buildPhases = (
+				E65CD0B6A7477168840816DF /* [CP] Check Pods Manifest.lock */,
 				5D0DAE0C301701E400027355 /* Sources */,
 				5D0DAE0D301701E400027355 /* Frameworks */,
 				5D0DAE0E301701E400027355 /* Resources */,
@@ -157,8 +206,6 @@
 				5D0DAE13301701E400027355 /* RoxMovementAnalyzerUITests */,
 			);
 			name = RoxMovementAnalyzerUITests;
-			packageProductDependencies = (
-			);
 			productName = RoxMovementAnalyzerUITests;
 			productReference = 5D0DAE10301701E400027355 /* RoxMovementAnalyzerUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -230,6 +277,75 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		D020076A9CE3A7039750278B /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-RoxMovementAnalyzerTests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		D9D4C6CB2C07C40EF4A3A61F /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-RoxMovementAnalyzer-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		E65CD0B6A7477168840816DF /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-RoxMovementAnalyzerUITests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		5D0DADF4301701E200027355 /* Sources */ = {
@@ -387,6 +503,7 @@
 		};
 		5D0DAE1B301701E400027355 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3056C4741182460BD247A396 /* Pods-RoxMovementAnalyzer.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -397,6 +514,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Rox Coach uses the camera to record workouts and provide live technique feedback.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -426,6 +544,7 @@
 		};
 		5D0DAE1C301701E400027355 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 135F3942C0B7FAA55DA93854 /* Pods-RoxMovementAnalyzer.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -436,6 +555,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Rox Coach uses the camera to record workouts and provide live technique feedback.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -465,6 +585,7 @@
 		};
 		5D0DAE1E301701E400027355 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8737C8FFA4238EC8FDA5290A /* Pods-RoxMovementAnalyzerTests.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -488,6 +609,7 @@
 		};
 		5D0DAE1F301701E400027355 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = EEC5D3666306E0240B471DCC /* Pods-RoxMovementAnalyzerTests.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -511,6 +633,7 @@
 		};
 		5D0DAE21301701E400027355 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8DA548C2449906CC390738D6 /* Pods-RoxMovementAnalyzerUITests.debug.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -533,6 +656,7 @@
 		};
 		5D0DAE22301701E400027355 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B2122115C29DB1B0C2809118 /* Pods-RoxMovementAnalyzerUITests.release.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
