@@ -5,11 +5,17 @@ final class ScorecardViewModel {
     let scorecard: WorkoutScorecard
     let summary: ScorecardSummary
 
-    init(
+    convenience init(
         scorecardProvider: ScorecardProviding = SampleScorecardProvider(),
         analyzer: ScorecardAnalyzing = EqualWeightScorecardAnalyzer()
     ) {
-        let scorecard = scorecardProvider.loadScorecard()
+        self.init(scorecard: scorecardProvider.loadScorecard(), analyzer: analyzer)
+    }
+
+    init(
+        scorecard: WorkoutScorecard,
+        analyzer: ScorecardAnalyzing = EqualWeightScorecardAnalyzer()
+    ) {
         self.scorecard = scorecard
         self.summary = analyzer.summarize(scorecard)
     }

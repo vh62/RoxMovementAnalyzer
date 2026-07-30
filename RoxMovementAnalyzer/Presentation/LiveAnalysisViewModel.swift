@@ -22,18 +22,23 @@ final class LiveAnalysisViewModel {
     var showsScorecard = false
     var latestPoseFrame: PoseFrame?
     var activeCameraPosition: CameraPosition = .back
+    var sessionScorecard: WorkoutScorecard?
 
     private let feedbackGenerator: LiveFeedbackGenerating
+    private let sessionAnalyzer: LiveSessionAnalyzing
     private var poseEstimator: PoseEstimating?
+    private var capturedFrames: [PoseFrame] = []
 
     init(
         selectedStation: HyroxStation = .wallBalls,
         cameraService: CameraCaptureServicing = AVFoundationCameraCaptureService(),
-        feedbackGenerator: LiveFeedbackGenerating = StationRuleLiveFeedbackGenerator()
+        feedbackGenerator: LiveFeedbackGenerating = StationRuleLiveFeedbackGenerator(),
+        sessionAnalyzer: LiveSessionAnalyzing = PoseSessionAnalyzer()
     ) {
         self.selectedStation = selectedStation
         self.cameraService = cameraService
         self.feedbackGenerator = feedbackGenerator
+        self.sessionAnalyzer = sessionAnalyzer
         self.currentCue = feedbackGenerator.readyCue(for: selectedStation)
     }
 
@@ -106,6 +111,8 @@ final class LiveAnalysisViewModel {
     private func startRecording() {
         do {
             try cameraService.startRecording()
+            capturedFrames.removeAll(keepingCapacity: true)
+            sessionScorecard = nil
             recordingState = .recording
             currentCue = feedbackGenerator.recordingCue(for: selectedStation)
         } catch {
@@ -115,6 +122,7 @@ final class LiveAnalysisViewModel {
 
     private func stopRecording() {
         cameraService.stopRecording()
+        sessionScorecard = sessionAnalyzer.analyze(station: selectedStation, frames: capturedFrames)
         recordingState = .completed
         currentCue = feedbackGenerator.completedCue(for: selectedStation)
         showsScorecard = true
@@ -152,6 +160,7 @@ final class LiveAnalysisViewModel {
         latestPoseFrame = poseFrame
 
         guard recordingState == .recording else { return }
+        capturedFrames.append(poseFrame)
         currentCue = feedbackGenerator.recordingCue(for: selectedStation)
     }
 }
