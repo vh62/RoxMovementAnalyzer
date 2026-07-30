@@ -30,7 +30,7 @@ final class LiveAnalysisViewModel {
 
     private let feedbackGenerator: LiveFeedbackGenerating
     private let sessionAnalyzer: LiveSessionAnalyzing
-    private var poseEstimator: PoseEstimating?
+    private let poseEstimator: PoseEstimating?
     private var capturedFrames: [PoseFrame] = []
     private var liveRepCounter = WallBallRepCounter()
 
@@ -38,12 +38,14 @@ final class LiveAnalysisViewModel {
         selectedStation: HyroxStation = .wallBalls,
         cameraService: CameraCaptureServicing = AVFoundationCameraCaptureService(),
         feedbackGenerator: LiveFeedbackGenerating = StationRuleLiveFeedbackGenerator(),
-        sessionAnalyzer: LiveSessionAnalyzing = PoseSessionAnalyzer()
+        sessionAnalyzer: LiveSessionAnalyzing = PoseSessionAnalyzer(),
+        poseEstimator: PoseEstimating? = SharedPoseEstimator.shared
     ) {
         self.selectedStation = selectedStation
         self.cameraService = cameraService
         self.feedbackGenerator = feedbackGenerator
         self.sessionAnalyzer = sessionAnalyzer
+        self.poseEstimator = poseEstimator
         self.currentCue = feedbackGenerator.readyCue(for: selectedStation)
     }
 
@@ -136,28 +138,26 @@ final class LiveAnalysisViewModel {
     }
 
     private func configurePoseEstimation() {
-        do {
-            let estimator = try MediaPipePoseEstimator()
-            estimator.poseFrameHandler = { [weak self] poseFrame in
-                Task { @MainActor in
-                    self?.handlePoseFrame(poseFrame)
-                }
-            }
-
-            cameraService.sampleBufferHandler = { [weak estimator] sampleBuffer, timestampInMilliseconds in
-                estimator?.detect(
-                    sampleBuffer: sampleBuffer,
-                    timestampInMilliseconds: timestampInMilliseconds
-                )
-            }
-
-            poseEstimator = estimator
-        } catch {
+        guard let estimator = poseEstimator else {
             currentCue = LiveFeedbackCue(
                 station: selectedStation,
                 message: "Pose model unavailable",
-                detail: error.localizedDescription,
+                detail: "The pose model could not be loaded. Reinstall the app and try again.",
                 status: .needsWork
+            )
+            return
+        }
+
+        estimator.poseFrameHandler = { [weak self] poseFrame in
+            Task { @MainActor in
+                self?.handlePoseFrame(poseFrame)
+            }
+        }
+
+        cameraService.sampleBufferHandler = { [weak estimator] sampleBuffer, timestampInMilliseconds in
+            estimator?.detect(
+                sampleBuffer: sampleBuffer,
+                timestampInMilliseconds: timestampInMilliseconds
             )
         }
     }
