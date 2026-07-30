@@ -94,8 +94,8 @@ extension MediaPipePoseEstimator: PoseLandmarkerLiveStreamDelegate {
                     x: Double(landmark.x),
                     y: Double(landmark.y),
                     z: Double(landmark.z),
-                    visibility: nil,
-                    presence: nil
+                    visibility: landmark.visibility?.doubleValue,
+                    presence: landmark.presence?.doubleValue
                 )
             )
         }

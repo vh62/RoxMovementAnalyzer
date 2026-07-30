@@ -306,6 +306,7 @@ struct PoseOverlayView: View {
     private func drawConnections(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
         for connection in connections {
             guard let start = poseFrame.landmark(connection.0), let end = poseFrame.landmark(connection.1) else { continue }
+            guard start.isVisible, end.isVisible else { continue }
             var path = Path()
             path.move(to: point(for: start, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio))
             path.addLine(to: point(for: end, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio))
@@ -316,6 +317,7 @@ struct PoseOverlayView: View {
 
     private func drawLandmarks(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
         for landmark in poseFrame.landmarks {
+            guard landmark.isVisible else { continue }
             let position = point(for: landmark, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio)
             let rect = CGRect(x: position.x - 4, y: position.y - 4, width: 8, height: 8)
             context.fill(Path(ellipseIn: rect), with: .color(.red))
@@ -326,27 +328,33 @@ struct PoseOverlayView: View {
     private func angleLabels(for poseFrame: PoseFrame, in size: CGSize) -> [PoseAngleLabel] {
         var labels: [PoseAngleLabel] = []
 
-        if let angle = poseFrame.torsoLeanAngle(), let hipCenter = poseFrame.midpoint(.leftHip, .rightHip) {
+        if poseFrame.areVisible(.leftShoulder, .rightShoulder, .leftHip, .rightHip),
+           let angle = poseFrame.torsoLeanAngle(), let hipCenter = poseFrame.midpoint(.leftHip, .rightHip) {
             labels.append(label("Back", angle: angle, at: hipCenter, poseFrame: poseFrame, size: size))
         }
 
-        if let angle = poseFrame.hipHingeAngle(), let hipCenter = poseFrame.midpoint(.leftHip, .rightHip) {
+        if poseFrame.areVisible(.leftShoulder, .rightShoulder, .leftHip, .rightHip, .leftKnee, .rightKnee),
+           let angle = poseFrame.hipHingeAngle(), let hipCenter = poseFrame.midpoint(.leftHip, .rightHip) {
             labels.append(label("Hinge", angle: angle, at: hipCenter, poseFrame: poseFrame, size: size, yOffset: -28))
         }
 
-        if let angle = poseFrame.angle(at: .leftKnee, from: .leftHip, to: .leftAnkle), let knee = poseFrame.landmark(.leftKnee) {
+        if poseFrame.areVisible(.leftHip, .leftKnee, .leftAnkle),
+           let angle = poseFrame.angle(at: .leftKnee, from: .leftHip, to: .leftAnkle), let knee = poseFrame.landmark(.leftKnee) {
             labels.append(label("L knee", angle: angle, at: knee, poseFrame: poseFrame, size: size))
         }
 
-        if let angle = poseFrame.angle(at: .rightKnee, from: .rightHip, to: .rightAnkle), let knee = poseFrame.landmark(.rightKnee) {
+        if poseFrame.areVisible(.rightHip, .rightKnee, .rightAnkle),
+           let angle = poseFrame.angle(at: .rightKnee, from: .rightHip, to: .rightAnkle), let knee = poseFrame.landmark(.rightKnee) {
             labels.append(label("R knee", angle: angle, at: knee, poseFrame: poseFrame, size: size))
         }
 
-        if let angle = poseFrame.angle(at: .leftElbow, from: .leftShoulder, to: .leftWrist), let elbow = poseFrame.landmark(.leftElbow) {
+        if poseFrame.areVisible(.leftShoulder, .leftElbow, .leftWrist),
+           let angle = poseFrame.angle(at: .leftElbow, from: .leftShoulder, to: .leftWrist), let elbow = poseFrame.landmark(.leftElbow) {
             labels.append(label("L elbow", angle: angle, at: elbow, poseFrame: poseFrame, size: size))
         }
 
-        if let angle = poseFrame.angle(at: .rightElbow, from: .rightShoulder, to: .rightWrist), let elbow = poseFrame.landmark(.rightElbow) {
+        if poseFrame.areVisible(.rightShoulder, .rightElbow, .rightWrist),
+           let angle = poseFrame.angle(at: .rightElbow, from: .rightShoulder, to: .rightWrist), let elbow = poseFrame.landmark(.rightElbow) {
             labels.append(label("R elbow", angle: angle, at: elbow, poseFrame: poseFrame, size: size))
         }
 
