@@ -45,7 +45,11 @@ struct LiveAnalysisView: View {
             viewModel.stopSession()
         }
         .navigationDestination(isPresented: $viewModel.showsScorecard) {
-            ScorecardView()
+            if let scorecard = viewModel.sessionScorecard {
+                ScorecardView(viewModel: ScorecardViewModel(scorecard: scorecard))
+            } else {
+                ScorecardView()
+            }
         }
     }
 
