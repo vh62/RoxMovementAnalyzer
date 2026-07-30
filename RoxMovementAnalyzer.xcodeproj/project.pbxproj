@@ -47,22 +47,16 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5D0DADFA301701E200027355 /* RoxMovementAnalyzer */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = RoxMovementAnalyzer;
 			sourceTree = "<group>";
 		};
 		5D0DAE09301701E400027355 /* RoxMovementAnalyzerTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = RoxMovementAnalyzerTests;
 			sourceTree = "<group>";
 		};
 		5D0DAE13301701E400027355 /* RoxMovementAnalyzerUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = RoxMovementAnalyzerUITests;
 			sourceTree = "<group>";
 		};
@@ -106,7 +100,6 @@
 				8DA548C2449906CC390738D6 /* Pods-RoxMovementAnalyzerUITests.debug.xcconfig */,
 				B2122115C29DB1B0C2809118 /* Pods-RoxMovementAnalyzerUITests.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -510,7 +503,7 @@
 				CODE_SIGN_ENTITLEMENTS = RoxMovementAnalyzer/RoxMovementAnalyzer.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = DYR4D2NHH5;
+				DEVELOPMENT_TEAM = A3QHS7J765;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -530,7 +523,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = RoxMovementAnalyzer.vikram.ho.RoxMovementAnalyzer;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vikramho.RoxMovementAnalyzer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -551,7 +544,7 @@
 				CODE_SIGN_ENTITLEMENTS = RoxMovementAnalyzer/RoxMovementAnalyzer.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = DYR4D2NHH5;
+				DEVELOPMENT_TEAM = A3QHS7J765;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -571,7 +564,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = RoxMovementAnalyzer.vikram.ho.RoxMovementAnalyzer;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vikramho.RoxMovementAnalyzer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
