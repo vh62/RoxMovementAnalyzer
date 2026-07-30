@@ -1,8 +1,11 @@
 import CoreMedia
 import Foundation
 import MediaPipeTasksVision
+import os
 
 final class MediaPipePoseEstimator: NSObject, PoseEstimating {
+    private static let log = Logger(subsystem: "rox.pose", category: "MediaPipePoseEstimator")
+
     var poseFrameHandler: ((PoseFrame) -> Void)?
 
     private var poseLandmarker: PoseLandmarker!
@@ -39,6 +42,7 @@ final class MediaPipePoseEstimator: NSObject, PoseEstimating {
             let image = try MPImage(sampleBuffer: sampleBuffer)
             try poseLandmarker.detectAsync(image: image, timestampInMilliseconds: timestampInMilliseconds)
         } catch {
+            Self.log.error("detect failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -68,7 +72,15 @@ extension MediaPipePoseEstimator: PoseLandmarkerLiveStreamDelegate {
         timestampInMilliseconds: Int,
         error: Error?
     ) {
-        guard error == nil, let landmarks = result?.landmarks.first else { return }
+        if let error {
+            Self.log.error("detection callback error: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        guard let landmarks = result?.landmarks.first else {
+            Self.log.debug("no pose detected at \(timestampInMilliseconds)")
+            return
+        }
 
         var poseLandmarks: [PoseLandmark] = []
         poseLandmarks.reserveCapacity(landmarks.count)

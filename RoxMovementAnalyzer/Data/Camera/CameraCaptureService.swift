@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import CoreVideo
 import Foundation
 
 enum CameraAuthorizationState: Equatable {
@@ -120,11 +121,36 @@ final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
         session.addOutput(movieOutput)
 
         videoOutput.alwaysDiscardsLateVideoFrames = true
+        // MediaPipe's MPImage(sampleBuffer:) requires 32BGRA; the capture default is YUV, which fails.
+        videoOutput.videoSettings = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        ]
         videoOutput.setSampleBufferDelegate(self, queue: videoOutputQueue)
         guard session.canAddOutput(videoOutput) else { throw CameraCaptureError.cannotAddVideoDataOutput }
         session.addOutput(videoOutput)
 
+        configureOutputConnections()
         isConfigured = true
+    }
+
+    /// Rotates the movie and video-data outputs to upright portrait so MediaPipe receives an
+    /// upright frame, and mirrors the front camera so the pose overlay matches the mirrored preview.
+    private func configureOutputConnections() {
+        let portraitAngle: CGFloat = 90
+        let shouldMirror = activeCameraPosition == .front
+
+        for output in [videoOutput as AVCaptureOutput, movieOutput as AVCaptureOutput] {
+            guard let connection = output.connection(with: .video) else { continue }
+
+            if connection.isVideoRotationAngleSupported(portraitAngle) {
+                connection.videoRotationAngle = portraitAngle
+            }
+
+            if connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = shouldMirror
+            }
+        }
     }
 
     func startSession() {
@@ -191,6 +217,7 @@ final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
         session.addInput(newInput)
         activeCameraInput = newInput
         activeCameraPosition = targetPosition
+        configureOutputConnections()
         return targetPosition
     }
 
