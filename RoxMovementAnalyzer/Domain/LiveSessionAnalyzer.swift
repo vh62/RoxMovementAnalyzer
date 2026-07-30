@@ -19,6 +19,8 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
         )
     }
 
+    private let wallBallCounter = WallBallRepCounter()
+
     private func stationScore(station: HyroxStation, frames: [PoseFrame]) -> StationScore {
         let frameCount = frames.count
         guard frameCount > 0 else {
@@ -30,6 +32,10 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
                 metrics: [MetricResult(label: "Frames analyzed", value: "0", status: .needsWork)],
                 alerts: []
             )
+        }
+
+        if station == .wallBalls {
+            return wallBallScore(frames: frames)
         }
 
         let coverage = fullBodyCoverage(frames)
@@ -67,6 +73,69 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
             metrics: metrics,
             alerts: []
         )
+    }
+
+    private func wallBallScore(frames: [PoseFrame]) -> StationScore {
+        let result = wallBallCounter.evaluate(frames: frames)
+
+        guard result.attempts > 0 else {
+            return StationScore(
+                station: .wallBalls,
+                score: 0,
+                status: .needsWork,
+                primaryFeedback: "No wall-ball squats were detected. Keep hips, knees, and ankles in frame through the full squat and record again.",
+                metrics: [
+                    MetricResult(label: "Valid reps", value: "0", status: .needsWork),
+                    MetricResult(label: "Frames analyzed", value: "\(frames.count)", status: .caution)
+                ],
+                alerts: []
+            )
+        }
+
+        let accuracy = result.depthAccuracy
+        let score = Int((accuracy * 100).rounded())
+        let depthMisses = result.attempts - result.validReps
+
+        var metrics: [MetricResult] = [
+            MetricResult(label: "Valid reps", value: "\(result.validReps)", status: depthStatus(accuracy)),
+            MetricResult(label: "Total squats", value: "\(result.attempts)", status: .raceReady),
+            MetricResult(label: "Depth accuracy", value: "\(score)%", status: depthStatus(accuracy))
+        ]
+        if depthMisses > 0 {
+            metrics.append(MetricResult(label: "Shallow reps", value: "\(depthMisses)", status: .caution))
+        }
+
+        var alerts: [RedFlagAlert] = []
+        if depthMisses > 0 {
+            alerts.append(
+                RedFlagAlert(
+                    station: .wallBalls,
+                    title: "Squat depth misses",
+                    message: "\(depthMisses) of \(result.attempts) squats did not reach hip-below-knee depth. Sink the hips lower before the throw.",
+                    severity: accuracy < 0.6 ? .high : .medium,
+                    timestamp: nil
+                )
+            )
+        }
+
+        return StationScore(
+            station: .wallBalls,
+            score: score,
+            status: depthStatus(accuracy),
+            primaryFeedback: "\(result.validReps) of \(result.attempts) squats reached legal depth (hip below knee). "
+                + "Depth is judged from tracked joints and is most reliable with the full body in a side or front view.",
+            metrics: metrics,
+            alerts: alerts
+        )
+    }
+
+    private func depthStatus(_ accuracy: Double) -> StationStatus {
+        switch accuracy {
+        case 0.9...: .strong
+        case 0.75..<0.9: .raceReady
+        case 0.5..<0.75: .caution
+        default: .needsWork
+        }
     }
 
     /// Fraction of captured frames in which the core lower- and upper-body joints were all confidently tracked.
