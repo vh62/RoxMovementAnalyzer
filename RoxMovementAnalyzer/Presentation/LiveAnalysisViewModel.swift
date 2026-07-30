@@ -23,11 +23,16 @@ final class LiveAnalysisViewModel {
     var latestPoseFrame: PoseFrame?
     var activeCameraPosition: CameraPosition = .back
     var sessionScorecard: WorkoutScorecard?
+    var liveRepCount = 0
+
+    /// Whether a live rep counter is available for the selected station (currently Wall Balls only).
+    var showsLiveRepCount: Bool { selectedStation == .wallBalls }
 
     private let feedbackGenerator: LiveFeedbackGenerating
     private let sessionAnalyzer: LiveSessionAnalyzing
     private var poseEstimator: PoseEstimating?
     private var capturedFrames: [PoseFrame] = []
+    private var liveRepCounter = WallBallRepCounter()
 
     init(
         selectedStation: HyroxStation = .wallBalls,
@@ -112,6 +117,8 @@ final class LiveAnalysisViewModel {
         do {
             try cameraService.startRecording()
             capturedFrames.removeAll(keepingCapacity: true)
+            liveRepCounter = WallBallRepCounter()
+            liveRepCount = 0
             sessionScorecard = nil
             recordingState = .recording
             currentCue = feedbackGenerator.recordingCue(for: selectedStation)
@@ -161,6 +168,12 @@ final class LiveAnalysisViewModel {
 
         guard recordingState == .recording else { return }
         capturedFrames.append(poseFrame)
+
+        if selectedStation == .wallBalls {
+            liveRepCounter.process(poseFrame)
+            liveRepCount = liveRepCounter.result.validReps
+        }
+
         currentCue = feedbackGenerator.recordingCue(for: selectedStation)
     }
 }

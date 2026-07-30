@@ -13,6 +13,15 @@ struct PoseFrame: Equatable {
         names.allSatisfy { landmark($0)?.isVisible ?? false }
     }
 
+    /// Average normalized y of whichever of the given landmarks are confidently tracked (one or more).
+    /// Returns nil only if none are visible. Lets depth checks work from a side view where only the
+    /// near-side joint is reliable.
+    func visibleAverageY(_ names: PoseLandmarkName...) -> Double? {
+        let ys = names.compactMap { landmark($0) }.filter(\.isVisible).map(\.y)
+        guard !ys.isEmpty else { return nil }
+        return ys.reduce(0, +) / Double(ys.count)
+    }
+
     func midpoint(_ firstName: PoseLandmarkName, _ secondName: PoseLandmarkName) -> PoseLandmark? {
         guard let first = landmark(firstName), let second = landmark(secondName) else { return nil }
         return PoseLandmark(

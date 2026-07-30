@@ -19,14 +19,20 @@ struct LiveAnalysisView: View {
             CameraPreviewView(session: viewModel.cameraService.session)
                 .ignoresSafeArea()
                 .overlay {
-                    PoseOverlayView(poseFrame: viewModel.latestPoseFrame)
-                        .ignoresSafeArea()
+                    PoseOverlayView(
+                        poseFrame: viewModel.latestPoseFrame,
+                        showsDepthGuide: viewModel.showsLiveRepCount
+                    )
+                    .ignoresSafeArea()
                 }
                 .overlay {
                     poseDetectionOverlay
                 }
                 .overlay(alignment: .top) {
                     topOverlay
+                }
+                .overlay(alignment: .top) {
+                    liveRepBadge
                 }
 
             VStack(spacing: 12) {
@@ -132,6 +138,29 @@ struct LiveAnalysisView: View {
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(color: .black.opacity(0.2), radius: 18, y: 8)
+    }
+
+    @ViewBuilder
+    private var liveRepBadge: some View {
+        if viewModel.recordingState == .recording, viewModel.showsLiveRepCount {
+            VStack(spacing: 2) {
+                Text("\(viewModel.liveRepCount)")
+                    .font(.system(size: 46, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                Text("VALID REPS")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 12)
+            .background(.black.opacity(0.55))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .padding(.top, 72)
+            .animation(.snappy, value: viewModel.liveRepCount)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(viewModel.liveRepCount) valid reps")
+        }
     }
 
     @ViewBuilder
@@ -246,6 +275,7 @@ final class PreviewView: UIView {
 
 struct PoseOverlayView: View {
     let poseFrame: PoseFrame?
+    var showsDepthGuide = false
 
     private let connections: [(PoseLandmarkName, PoseLandmarkName)] = [
         (.leftShoulder, .rightShoulder),
@@ -287,6 +317,9 @@ struct PoseOverlayView: View {
         GeometryReader { proxy in
             if let poseFrame {
                 Canvas { context, size in
+                    if showsDepthGuide {
+                        drawDepthGuide(in: context, size: size, poseFrame: poseFrame)
+                    }
                     drawConnections(in: context, size: size, poseFrame: poseFrame)
                     drawLandmarks(in: context, size: size, poseFrame: poseFrame)
                 }
@@ -305,6 +338,35 @@ struct PoseOverlayView: View {
             }
         }
         .allowsHitTesting(false)
+    }
+
+    /// Draws a horizontal reference line at knee height. The hip crease must drop below this line
+    /// for a legal wall-ball squat, so the line turns green once the hips are below it.
+    private func drawDepthGuide(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
+        guard let kneeLevel = poseFrame.visibleAverageY(.leftKnee, .rightKnee) else { return }
+
+        let anchor = PoseLandmark(name: .leftKnee, x: 0.5, y: kneeLevel, z: 0, visibility: nil, presence: nil)
+        let kneeY = point(for: anchor, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio).y
+
+        let hipsBelow: Bool = {
+            guard let hipLevel = poseFrame.visibleAverageY(.leftHip, .rightHip) else { return false }
+            return hipLevel >= kneeLevel
+        }()
+
+        let guideColor: Color = hipsBelow ? .green : .white
+
+        var line = Path()
+        line.move(to: CGPoint(x: 0, y: kneeY))
+        line.addLine(to: CGPoint(x: size.width, y: kneeY))
+        context.stroke(line, with: .color(.black.opacity(0.5)), style: StrokeStyle(lineWidth: 5, dash: [12, 7]))
+        context.stroke(line, with: .color(guideColor), style: StrokeStyle(lineWidth: 3, dash: [12, 7]))
+
+        var label = context.resolve(
+            Text(hipsBelow ? "Depth reached" : "Squat hips below line")
+                .font(.caption2.weight(.black))
+        )
+        label.shading = .color(guideColor)
+        context.draw(label, at: CGPoint(x: size.width / 2, y: max(kneeY - 14, 12)))
     }
 
     private func drawConnections(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
