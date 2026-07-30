@@ -9,6 +9,10 @@ struct PoseFrame: Equatable {
         landmarks.first { $0.name == name }
     }
 
+    func areVisible(_ names: PoseLandmarkName...) -> Bool {
+        names.allSatisfy { landmark($0)?.isVisible ?? false }
+    }
+
     func midpoint(_ firstName: PoseLandmarkName, _ secondName: PoseLandmarkName) -> PoseLandmark? {
         guard let first = landmark(firstName), let second = landmark(secondName) else { return nil }
         return PoseLandmark(
@@ -38,12 +42,21 @@ struct PoseFrame: Equatable {
 }
 
 struct PoseLandmark: Equatable {
+    static let visibilityThreshold = 0.5
+
     let name: PoseLandmarkName
     let x: Double
     let y: Double
     let z: Double
     let visibility: Double?
     let presence: Double?
+
+    /// Whether the joint is confidently in frame. Landmarks below the threshold are MediaPipe's
+    /// estimates of occluded or off-screen joints and should not be drawn. A missing value is
+    /// treated as visible so nothing is hidden when the model does not report confidence.
+    var isVisible: Bool {
+        (visibility ?? 1) >= Self.visibilityThreshold
+    }
 }
 
 enum PoseLandmarkName: Int, CaseIterable {
