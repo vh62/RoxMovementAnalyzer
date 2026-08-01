@@ -8,28 +8,29 @@ struct ScorecardView: View {
         self._viewModel = State(initialValue: viewModel)
     }
 
+    // Deliberately no NavigationStack of its own: this view is always pushed onto an existing
+    // stack (from the training hub, or from session playback), and nesting one here would render
+    // a second navigation bar inside the pushed screen.
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    OverallTechniqueHeader(scorecard: viewModel.scorecard, summary: viewModel.summary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                OverallTechniqueHeader(scorecard: viewModel.scorecard, summary: viewModel.summary)
 
-                    if !viewModel.summary.criticalAlerts.isEmpty {
-                        RedFlagStrip(alerts: Array(viewModel.summary.criticalAlerts.prefix(5)))
-                    }
-
-                    stationSection
-                    recommendationSection
+                if !viewModel.summary.criticalAlerts.isEmpty {
+                    RedFlagStrip(alerts: Array(viewModel.summary.criticalAlerts.prefix(5)))
                 }
-                .padding(20)
+
+                stationSection
+                recommendationSection
             }
-            .background(AppTheme.background)
-            .navigationTitle("HYROX Scorecard")
-            .navigationBarTitleDisplayMode(.inline)
-            .sheet(item: $selectedStation) { station in
-                StationDetailView(station: station)
-                    .presentationDetents([.medium, .large])
-            }
+            .padding(20)
+        }
+        .background(AppTheme.background)
+        .navigationTitle("HYROX Scorecard")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $selectedStation) { station in
+            StationDetailView(station: station)
+                .presentationDetents([.medium, .large])
         }
     }
 
@@ -77,5 +78,7 @@ struct ScorecardView: View {
 }
 
 #Preview("Scorecard") {
-    ScorecardView()
+    NavigationStack {
+        ScorecardView()
+    }
 }

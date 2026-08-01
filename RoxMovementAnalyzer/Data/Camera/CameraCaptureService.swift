@@ -26,6 +26,9 @@ enum CameraPosition: Equatable {
 protocol CameraCaptureServicing: AnyObject {
     var session: AVCaptureSession { get }
     var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)? { get set }
+    /// Called on the main actor once the movie file has finished writing, which happens some
+    /// time after `stopRecording()` returns.
+    var recordingFinishedHandler: ((Result<URL, Error>) -> Void)? { get set }
     var authorizationState: CameraAuthorizationState { get }
     var activeCameraPosition: CameraPosition { get }
     var isConfigured: Bool { get }
@@ -70,6 +73,7 @@ enum CameraCaptureError: LocalizedError {
 final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
     let session = AVCaptureSession()
     var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)?
+    var recordingFinishedHandler: ((Result<URL, Error>) -> Void)?
 
     private let movieOutput = AVCaptureMovieFileOutput()
     private let sessionQueue = DispatchQueue(label: "rox.camera.session")
@@ -238,6 +242,22 @@ extension AVFoundationCameraCaptureService: AVCaptureFileOutputRecordingDelegate
         from connections: [AVCaptureConnection],
         error: Error?
     ) {
+        // AVFoundation reports an error even for recordings that finished successfully (for
+        // example when stopping hits a file-size limit), flagging the usable ones with
+        // AVErrorRecordingSuccessfullyFinishedKey. Treat those as success.
+        let finishedSuccessfully = (error as? NSError)
+            .flatMap { $0.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool } ?? false
+
+        let result: Result<URL, Error>
+        if let error, !finishedSuccessfully {
+            result = .failure(error)
+        } else {
+            result = .success(outputFileURL)
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.recordingFinishedHandler?(result)
+        }
     }
 }
 

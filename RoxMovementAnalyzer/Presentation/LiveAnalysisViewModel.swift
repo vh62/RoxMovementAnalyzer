@@ -9,6 +9,8 @@ final class LiveAnalysisViewModel {
         case preparing
         case ready
         case recording
+        /// Recording stopped; waiting for the movie file to finish writing.
+        case processing
         case completed
         case failed(String)
     }
@@ -25,6 +27,15 @@ final class LiveAnalysisViewModel {
     var sessionScorecard: WorkoutScorecard?
     var liveRepCount = 0
 
+    /// The recorded movie for the session just captured, once it has finished writing.
+    var sessionVideoURL: URL?
+    /// Pose frames of the session just captured, aligned to video playback time.
+    var sessionTimeline: SessionTimeline?
+    var showsPlayback = false
+
+    /// Whether the finished session can be watched back with its overlay.
+    var canReviewVideo: Bool { sessionVideoURL != nil && !(sessionTimeline?.isEmpty ?? true) }
+
     /// Whether a live rep counter is available for the selected station (currently Wall Balls only).
     var showsLiveRepCount: Bool { selectedStation == .wallBalls }
 
@@ -37,6 +48,7 @@ final class LiveAnalysisViewModel {
     private var poseEstimator: PoseEstimating?
     private var capturedFrames: [PoseFrame] = []
     private var liveRepCounter = WallBallRepCounter()
+    private var recordingFinishTask: Task<Void, Never>?
 
     init(
         selectedStation: HyroxStation = .wallBalls,
@@ -49,6 +61,12 @@ final class LiveAnalysisViewModel {
         self.feedbackGenerator = feedbackGenerator
         self.sessionAnalyzer = sessionAnalyzer
         self.currentCue = feedbackGenerator.readyCue(for: selectedStation)
+
+        cameraService.recordingFinishedHandler = { [weak self] result in
+            MainActor.assumeIsolated {
+                self?.handleRecordingFinished(result)
+            }
+        }
     }
 
     func updateStation(_ station: HyroxStation) {
@@ -83,7 +101,7 @@ final class LiveAnalysisViewModel {
             startRecording()
         case .recording:
             stopRecording()
-        case .idle, .preparing, .failed:
+        case .idle, .preparing, .processing, .failed:
             break
         }
     }
@@ -124,6 +142,8 @@ final class LiveAnalysisViewModel {
             liveRepCounter = WallBallRepCounter()
             liveRepCount = 0
             sessionScorecard = nil
+            sessionVideoURL = nil
+            sessionTimeline = nil
             recordingState = .recording
             currentCue = feedbackGenerator.recordingCue(for: selectedStation)
         } catch {
@@ -134,9 +154,50 @@ final class LiveAnalysisViewModel {
     private func stopRecording() {
         cameraService.stopRecording()
         sessionScorecard = sessionAnalyzer.analyze(station: selectedStation, frames: capturedFrames)
-        recordingState = .completed
+        sessionTimeline = SessionTimeline(frames: capturedFrames, station: selectedStation)
         currentCue = feedbackGenerator.completedCue(for: selectedStation)
-        showsScorecard = true
+
+        // The movie file keeps writing after stopRecording() returns; wait for the delegate
+        // rather than navigating to a video that does not exist yet.
+        recordingState = .processing
+        startRecordingFinishTimeout()
+    }
+
+    /// Falls through to the scorecard if the capture delegate never reports back, so a stalled
+    /// write cannot strand the user on the processing state.
+    private func startRecordingFinishTimeout() {
+        recordingFinishTask?.cancel()
+        recordingFinishTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, let self, self.recordingState == .processing else { return }
+            self.finishSession()
+        }
+    }
+
+    private func handleRecordingFinished(_ result: Result<URL, Error>) {
+        recordingFinishTask?.cancel()
+        recordingFinishTask = nil
+
+        switch result {
+        case .success(let url):
+            sessionVideoURL = url
+        case .failure:
+            // Analysis still stands without the video; only the replay is unavailable.
+            sessionVideoURL = nil
+        }
+
+        guard recordingState == .processing else { return }
+        finishSession()
+    }
+
+    private func finishSession() {
+        recordingState = .completed
+
+        if canReviewVideo {
+            showsPlayback = true
+        } else {
+            showsScorecard = true
+        }
     }
 
     private func configurePoseEstimation() {

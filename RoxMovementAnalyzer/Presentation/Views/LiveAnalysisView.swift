@@ -58,6 +58,16 @@ struct LiveAnalysisView: View {
                 ScorecardView()
             }
         }
+        .navigationDestination(isPresented: $viewModel.showsPlayback) {
+            if let videoURL = viewModel.sessionVideoURL, let timeline = viewModel.sessionTimeline {
+                SessionPlaybackView(
+                    videoURL: videoURL,
+                    timeline: timeline,
+                    station: viewModel.selectedStation,
+                    scorecard: viewModel.sessionScorecard
+                )
+            }
+        }
     }
 
     private var topOverlay: some View {
@@ -144,23 +154,8 @@ struct LiveAnalysisView: View {
     @ViewBuilder
     private var liveRepBadge: some View {
         if viewModel.recordingState == .recording, viewModel.showsLiveRepCount {
-            VStack(spacing: 2) {
-                Text("\(viewModel.liveRepCount)")
-                    .font(.system(size: 46, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-                    .contentTransition(.numericText())
-                Text("VALID REPS")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.85))
-            }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 12)
-            .background(.black.opacity(0.55))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .padding(.top, 72)
-            .animation(.snappy, value: viewModel.liveRepCount)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(viewModel.liveRepCount) valid reps")
+            RepCountBadge(count: viewModel.liveRepCount)
+                .padding(.top, 72)
         }
     }
 
@@ -216,6 +211,7 @@ struct LiveAnalysisView: View {
         case .preparing: "Preparing camera"
         case .ready: "Ready"
         case .recording: "Recording"
+        case .processing: "Saving video"
         case .completed: "Captured"
         case .failed: "Camera unavailable"
         }
@@ -226,6 +222,7 @@ struct LiveAnalysisView: View {
         case .idle, .preparing: "camera.metering.unknown"
         case .ready: "camera.fill"
         case .recording: "record.circle.fill"
+        case .processing: "hourglass"
         case .completed: "checkmark.circle.fill"
         case .failed: "exclamationmark.triangle.fill"
         }
@@ -235,6 +232,7 @@ struct LiveAnalysisView: View {
         switch viewModel.recordingState {
         case .recording: "Stop and Review"
         case .ready, .completed: "Start Recording"
+        case .processing: "Saving Video…"
         case .idle, .preparing: "Preparing"
         case .failed: "Camera Required"
         }
@@ -251,7 +249,7 @@ struct LiveAnalysisView: View {
     private var canToggleRecording: Bool {
         switch viewModel.recordingState {
         case .ready, .recording, .completed: true
-        case .idle, .preparing, .failed: false
+        case .idle, .preparing, .processing, .failed: false
         }
     }
 }
