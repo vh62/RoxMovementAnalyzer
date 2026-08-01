@@ -285,41 +285,6 @@ struct PoseOverlayView: View {
     /// When true, the skeleton is only drawn if the whole body is tracked (see PoseFrame.hasFullBody).
     var requiresFullBody = false
 
-    private let connections: [(PoseLandmarkName, PoseLandmarkName)] = [
-        (.leftShoulder, .rightShoulder),
-        (.leftShoulder, .leftElbow),
-        (.leftElbow, .leftWrist),
-        (.rightShoulder, .rightElbow),
-        (.rightElbow, .rightWrist),
-        (.leftShoulder, .leftHip),
-        (.rightShoulder, .rightHip),
-        (.leftHip, .rightHip),
-        (.leftHip, .leftKnee),
-        (.leftKnee, .leftAnkle),
-        (.rightHip, .rightKnee),
-        (.rightKnee, .rightAnkle),
-        (.leftAnkle, .leftHeel),
-        (.leftHeel, .leftFootIndex),
-        (.leftAnkle, .leftFootIndex),
-        (.rightAnkle, .rightHeel),
-        (.rightHeel, .rightFootIndex),
-        (.rightAnkle, .rightFootIndex),
-        (.leftWrist, .leftThumb),
-        (.leftWrist, .leftIndex),
-        (.leftWrist, .leftPinky),
-        (.leftIndex, .leftPinky),
-        (.rightWrist, .rightThumb),
-        (.rightWrist, .rightIndex),
-        (.rightWrist, .rightPinky),
-        (.rightIndex, .rightPinky),
-        (.nose, .leftEyeInner),
-        (.leftEyeInner, .leftEye),
-        (.leftEye, .leftEyeOuter),
-        (.nose, .rightEyeInner),
-        (.rightEyeInner, .rightEye),
-        (.rightEye, .rightEyeOuter),
-        (.mouthLeft, .mouthRight)
-    ]
 
     var body: some View {
         GeometryReader { proxy in
@@ -351,16 +316,16 @@ struct PoseOverlayView: View {
     /// Draws a horizontal reference line at knee height. The hip crease must drop below this line
     /// for a legal wall-ball squat, so the line turns green once the hips are below it.
     private func drawDepthGuide(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
-        guard let kneeLevel = poseFrame.visibleAverageY(.leftKnee, .rightKnee) else { return }
+        guard let guide = PoseOverlayGeometry.depthGuide(for: poseFrame) else { return }
 
-        let anchor = PoseLandmark(name: .leftKnee, x: 0.5, y: kneeLevel, z: 0, visibility: nil, presence: nil)
-        let kneeY = point(for: anchor, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio).y
+        let kneeY = PoseOverlayGeometry.point(
+            forNormalizedX: 0.5,
+            y: guide.kneeLevel,
+            in: size,
+            sourceAspectRatio: poseFrame.sourceAspectRatio
+        ).y
 
-        let hipsBelow: Bool = {
-            guard let hipLevel = poseFrame.visibleAverageY(.leftHip, .rightHip) else { return false }
-            return hipLevel >= kneeLevel
-        }()
-
+        let hipsBelow = guide.hasReachedDepth
         let guideColor: Color = hipsBelow ? .green : .white
 
         var line = Path()
@@ -378,7 +343,7 @@ struct PoseOverlayView: View {
     }
 
     private func drawConnections(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
-        for connection in connections {
+        for connection in PoseOverlayGeometry.connections {
             guard let start = poseFrame.landmark(connection.0), let end = poseFrame.landmark(connection.1) else { continue }
             guard start.isVisible, end.isVisible else { continue }
             var path = Path()
@@ -442,22 +407,7 @@ struct PoseOverlayView: View {
     }
 
     private func point(for landmark: PoseLandmark, in size: CGSize, sourceAspectRatio: Double) -> CGPoint {
-        let containerAspectRatio = size.width / max(size.height, 1)
-        let scaledSize: CGSize
-        let offset: CGPoint
-
-        if sourceAspectRatio > containerAspectRatio {
-            scaledSize = CGSize(width: size.height * sourceAspectRatio, height: size.height)
-            offset = CGPoint(x: (size.width - scaledSize.width) / 2, y: 0)
-        } else {
-            scaledSize = CGSize(width: size.width, height: size.width / max(sourceAspectRatio, 0.001))
-            offset = CGPoint(x: 0, y: (size.height - scaledSize.height) / 2)
-        }
-
-        return CGPoint(
-            x: offset.x + CGFloat(landmark.x) * scaledSize.width,
-            y: offset.y + CGFloat(landmark.y) * scaledSize.height
-        )
+        PoseOverlayGeometry.point(for: landmark, in: size, sourceAspectRatio: sourceAspectRatio)
     }
 }
 

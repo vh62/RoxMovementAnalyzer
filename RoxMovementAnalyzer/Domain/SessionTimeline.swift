@@ -13,6 +13,15 @@ struct SessionTimeline: Equatable {
         let frame: PoseFrame
         let seconds: Double
         let validReps: Int
+        /// When the most recent rep was counted, used to hold the "rep counted" callout on screen
+        /// for a readable moment rather than a single frame.
+        let lastRepCountedAt: Double?
+
+        /// Whether a rep was counted recently enough to still be worth calling out.
+        func isCelebratingRep(at seconds: Double, window: Double = 0.8) -> Bool {
+            guard let lastRepCountedAt else { return false }
+            return seconds - lastRepCountedAt <= window
+        }
     }
 
     /// How far playback may run past a frame before it is considered stale. Beyond this the overlay
@@ -42,16 +51,25 @@ struct SessionTimeline: Equatable {
 
         let countsReps = station == .wallBalls
         var counter = WallBallRepCounter()
+        var previousReps = 0
+        var lastRepCountedAt: Double?
 
         self.entries = frames.map { frame in
+            let seconds = Double(frame.timestampInMilliseconds - firstTimestamp) / 1000
+
             if countsReps {
                 counter.process(frame)
+                if counter.result.validReps > previousReps {
+                    previousReps = counter.result.validReps
+                    lastRepCountedAt = seconds
+                }
             }
 
             return Entry(
                 frame: frame,
-                seconds: Double(frame.timestampInMilliseconds - firstTimestamp) / 1000,
-                validReps: counter.result.validReps
+                seconds: seconds,
+                validReps: counter.result.validReps,
+                lastRepCountedAt: lastRepCountedAt
             )
         }
     }

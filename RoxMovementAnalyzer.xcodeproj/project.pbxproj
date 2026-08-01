@@ -507,7 +507,8 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Rox Coach uses the camera to record workouts and provide live technique feedback.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Rox Movement Analyzer uses the camera to record workouts and provide live technique feedback.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Rox Movement Analyzer saves your analysed session videos to your photo library.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -548,7 +549,8 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Rox Coach uses the camera to record workouts and provide live technique feedback.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Rox Movement Analyzer uses the camera to record workouts and provide live technique feedback.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Rox Movement Analyzer saves your analysed session videos to your photo library.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

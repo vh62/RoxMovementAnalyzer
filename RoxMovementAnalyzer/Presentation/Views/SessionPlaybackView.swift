@@ -12,6 +12,7 @@ struct SessionPlaybackView: View {
     var scorecard: WorkoutScorecard?
 
     @State private var player: AVPlayer
+    @State private var exportViewModel: SessionExportViewModel
     @State private var currentTime: Double = 0
     @State private var duration: Double = 0
     @State private var isPlaying = false
@@ -30,12 +31,16 @@ struct SessionPlaybackView: View {
         self.station = station
         self.scorecard = scorecard
         self._player = State(initialValue: AVPlayer(url: videoURL))
+        self._exportViewModel = State(
+            initialValue: SessionExportViewModel(timeline: timeline, station: station)
+        )
     }
 
     var body: some View {
         VStack(spacing: 0) {
             videoStage
             controls
+            exportSection
         }
         .background(.black)
         .navigationTitle("Session Replay")
@@ -112,6 +117,95 @@ struct SessionPlaybackView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
+        .background(.black)
+    }
+
+    // MARK: - Export
+
+    @ViewBuilder
+    private var exportSection: some View {
+        VStack(spacing: 10) {
+            switch exportViewModel.state {
+            case .idle:
+                Button {
+                    exportViewModel.export(sourceURL: videoURL)
+                } label: {
+                    Label("Save Video with Overlay", systemImage: "square.and.arrow.down")
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+
+            case .exporting(let progress):
+                VStack(spacing: 8) {
+                    ProgressView(value: progress)
+                        .tint(.white)
+                    HStack {
+                        Text("Burning in overlay… \(Int(progress * 100))%")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                        Spacer()
+                        Button("Cancel") { exportViewModel.cancel() }
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+
+            case .exported(let url):
+                VStack(spacing: 10) {
+                    HStack(spacing: 12) {
+                        ShareLink(item: url) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+
+                        Button {
+                            Task { await exportViewModel.saveToPhotos() }
+                        } label: {
+                            Label(
+                                exportViewModel.savedToPhotos ? "Saved" : "Save to Photos",
+                                systemImage: exportViewModel.savedToPhotos
+                                    ? "checkmark.circle.fill" : "photo.on.rectangle"
+                            )
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(.white.opacity(0.18))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .disabled(exportViewModel.savedToPhotos)
+                    }
+                }
+
+            case .failed(let message):
+                VStack(spacing: 8) {
+                    Text(message)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Try Again") { exportViewModel.export(sourceURL: videoURL) }
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.white)
+                        .clipShape(Capsule())
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 20)
         .background(.black)
     }
 
