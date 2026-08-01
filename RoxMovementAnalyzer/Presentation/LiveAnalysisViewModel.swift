@@ -28,6 +28,10 @@ final class LiveAnalysisViewModel {
     /// Whether a live rep counter is available for the selected station (currently Wall Balls only).
     var showsLiveRepCount: Bool { selectedStation == .wallBalls }
 
+    /// Stations whose analysis needs the whole body in frame — the skeleton is only drawn once the
+    /// full body is tracked (Wall Balls relies on hip-vs-knee depth, so a partial body is useless).
+    var requiresFullBody: Bool { selectedStation == .wallBalls }
+
     private let feedbackGenerator: LiveFeedbackGenerating
     private let sessionAnalyzer: LiveSessionAnalyzing
     private var poseEstimator: PoseEstimating?

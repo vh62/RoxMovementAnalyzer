@@ -21,7 +21,8 @@ struct LiveAnalysisView: View {
                 .overlay {
                     PoseOverlayView(
                         poseFrame: viewModel.latestPoseFrame,
-                        showsDepthGuide: viewModel.showsLiveRepCount
+                        showsDepthGuide: viewModel.showsLiveRepCount,
+                        requiresFullBody: viewModel.requiresFullBody
                     )
                     .ignoresSafeArea()
                 }
@@ -163,15 +164,22 @@ struct LiveAnalysisView: View {
         }
     }
 
+    /// Shows the framing prompt when there is no pose yet, or — for full-body stations like Wall
+    /// Balls — when only part of the body is in frame (so the skeleton is intentionally hidden).
+    private var showsBodyPrompt: Bool {
+        guard let frame = viewModel.latestPoseFrame else { return true }
+        return viewModel.requiresFullBody && !frame.hasFullBody
+    }
+
     @ViewBuilder
     private var poseDetectionOverlay: some View {
-        if viewModel.latestPoseFrame == nil {
+        if showsBodyPrompt {
             VStack(spacing: 8) {
                 Image(systemName: "figure.stand")
                     .font(.title2.weight(.bold))
                 Text("Looking for full body")
                     .font(.headline.weight(.black))
-                Text("Pose tracking needs shoulders, hips, knees, and hands visible. A hand-only recording will not show the body skeleton.")
+                Text("Step back so your shoulders, hips, knees, and ankles are all in frame. The skeleton appears once your whole body is visible.")
                     .font(.caption.weight(.semibold))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -276,6 +284,8 @@ final class PreviewView: UIView {
 struct PoseOverlayView: View {
     let poseFrame: PoseFrame?
     var showsDepthGuide = false
+    /// When true, the skeleton is only drawn if the whole body is tracked (see PoseFrame.hasFullBody).
+    var requiresFullBody = false
 
     private let connections: [(PoseLandmarkName, PoseLandmarkName)] = [
         (.leftShoulder, .rightShoulder),
@@ -315,7 +325,7 @@ struct PoseOverlayView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            if let poseFrame {
+            if let poseFrame, !requiresFullBody || poseFrame.hasFullBody {
                 Canvas { context, size in
                     if showsDepthGuide {
                         drawDepthGuide(in: context, size: size, poseFrame: poseFrame)

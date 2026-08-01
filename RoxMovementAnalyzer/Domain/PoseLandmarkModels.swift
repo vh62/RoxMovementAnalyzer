@@ -13,6 +13,17 @@ struct PoseFrame: Equatable {
         names.allSatisfy { landmark($0)?.isVisible ?? false }
     }
 
+    /// Whether the core full-body joints — shoulders, hips, knees, and ankles on both sides — are
+    /// all confidently tracked, i.e. the whole athlete is in frame.
+    var hasFullBody: Bool {
+        areVisible(
+            .leftShoulder, .rightShoulder,
+            .leftHip, .rightHip,
+            .leftKnee, .rightKnee,
+            .leftAnkle, .rightAnkle
+        )
+    }
+
     /// Average normalized y of whichever of the given landmarks are confidently tracked (one or more).
     /// Returns nil only if none are visible. Lets depth checks work from a side view where only the
     /// near-side joint is reliable.
