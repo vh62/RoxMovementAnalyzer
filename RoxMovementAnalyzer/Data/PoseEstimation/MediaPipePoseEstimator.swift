@@ -1,4 +1,5 @@
 import CoreMedia
+import CoreVideo
 import Foundation
 import MediaPipeTasksVision
 import os
@@ -10,7 +11,8 @@ final class MediaPipePoseEstimator: NSObject, PoseEstimating {
 
     private var poseLandmarker: PoseLandmarker!
     private var frameAspectRatios: [Int: Double] = [:]
-    private let aspectRatioLock = NSLock()
+    private let stateLock = NSLock()
+    private var lastTimestamp = Int.min
 
     init(
         modelName: String = "pose_landmarker_lite",
@@ -37,13 +39,45 @@ final class MediaPipePoseEstimator: NSObject, PoseEstimating {
     }
 
     func detect(sampleBuffer: CMSampleBuffer, timestampInMilliseconds: Int) {
+        let timestamp = nextTimestamp(atLeast: timestampInMilliseconds)
         do {
-            storeAspectRatio(for: sampleBuffer, timestampInMilliseconds: timestampInMilliseconds)
+            storeAspectRatio(for: sampleBuffer, timestampInMilliseconds: timestamp)
             let image = try MPImage(sampleBuffer: sampleBuffer)
-            try poseLandmarker.detectAsync(image: image, timestampInMilliseconds: timestampInMilliseconds)
+            try poseLandmarker.detectAsync(image: image, timestampInMilliseconds: timestamp)
         } catch {
             Self.log.error("detect failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// Runs one throwaway inference on a blank frame so the model graph is built and warmed before
+    /// the first real frame arrives. Safe to call once at launch on a background thread.
+    func prewarm() {
+        guard let pixelBuffer = Self.makeBlankPixelBuffer(width: 256, height: 256) else { return }
+        let timestamp = nextTimestamp(atLeast: 0)
+        do {
+            let image = try MPImage(pixelBuffer: pixelBuffer)
+            try poseLandmarker.detectAsync(image: image, timestampInMilliseconds: timestamp)
+        } catch {
+            Self.log.error("prewarm failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Live-stream mode requires strictly increasing timestamps. Enforcing that here lets a single
+    /// warmed instance be reused across camera restarts, whose presentation timestamps may reset.
+    private func nextTimestamp(atLeast requested: Int) -> Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        let timestamp = max(requested, lastTimestamp + 1)
+        lastTimestamp = timestamp
+        return timestamp
+    }
+
+    private static func makeBlankPixelBuffer(width: Int, height: Int) -> CVPixelBuffer? {
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, nil, &pixelBuffer
+        )
+        return status == kCVReturnSuccess ? pixelBuffer : nil
     }
 
     private func storeAspectRatio(for sampleBuffer: CMSampleBuffer, timestampInMilliseconds: Int) {
@@ -51,17 +85,33 @@ final class MediaPipePoseEstimator: NSObject, PoseEstimating {
         let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
         guard dimensions.height > 0 else { return }
 
-        aspectRatioLock.lock()
+        stateLock.lock()
         frameAspectRatios[timestampInMilliseconds] = Double(dimensions.width) / Double(dimensions.height)
-        aspectRatioLock.unlock()
+        // Frames dropped by the tracker never get consumed; drop their stale entries so the map
+        // does not grow without bound over a long session.
+        if frameAspectRatios.count > 120 {
+            let cutoff = timestampInMilliseconds - 2000
+            frameAspectRatios = frameAspectRatios.filter { $0.key >= cutoff }
+        }
+        stateLock.unlock()
     }
 
     private func consumeAspectRatio(timestampInMilliseconds: Int) -> Double {
-        aspectRatioLock.lock()
-        defer { aspectRatioLock.unlock() }
+        stateLock.lock()
+        defer { stateLock.unlock() }
 
         let aspectRatio = frameAspectRatios.removeValue(forKey: timestampInMilliseconds)
         return aspectRatio ?? (9 / 16)
+    }
+}
+
+/// App-wide pose estimator, built and warmed once at launch so opening live analysis is not slow.
+enum SharedPoseEstimator {
+    static let shared: PoseEstimating? = try? MediaPipePoseEstimator()
+
+    /// Triggers the (lazy) model load and a warmup inference. Call off the main thread.
+    static func prewarm() {
+        (shared as? MediaPipePoseEstimator)?.prewarm()
     }
 }
 

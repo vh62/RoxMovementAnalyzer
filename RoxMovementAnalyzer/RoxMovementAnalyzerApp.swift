@@ -13,9 +13,11 @@ struct RoxMovementAnalyzerApp: App {
     @State private var exportService = SessionExportService()
 
     init() {
-        // Clear out exports left behind by earlier sessions or interrupted jobs. Off the main
-        // thread so scanning the directory cannot slow the launch.
+        // Both off the main thread so neither slows the launch.
         Task.detached(priority: .utility) {
+            // Load and warm the pose model so the first live-analysis frame is fast.
+            SharedPoseEstimator.prewarm()
+            // Clear out exports left behind by earlier sessions or interrupted jobs.
             SessionExportStore.pruneStaleExports()
         }
     }
