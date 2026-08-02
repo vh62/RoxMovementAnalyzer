@@ -86,6 +86,14 @@ struct OverlayVideoExporter {
         )
         let duration = try await asset.load(.duration).seconds
 
+        Self.log.info("""
+            exporting \(Int(naturalSize.width), privacy: .public)x\
+            \(Int(naturalSize.height), privacy: .public) \
+            -> \(Int(renderSize.width), privacy: .public)x\
+            \(Int(renderSize.height), privacy: .public), \
+            \(duration, privacy: .public)s
+            """)
+
         let reader = try AVAssetReader(asset: asset)
         let readerOutput = AVAssetReaderTrackOutput(
             track: track,
@@ -121,7 +129,10 @@ struct OverlayVideoExporter {
             sourcePixelBufferAttributes: [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
                 kCVPixelBufferWidthKey as String: Int(renderSize.width),
-                kCVPixelBufferHeightKey as String: Int(renderSize.height)
+                kCVPixelBufferHeightKey as String: Int(renderSize.height),
+                // A Metal-backed CIContext can only render into IOSurface-backed buffers, and the
+                // pool does not provide them unless asked.
+                kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any]
             ]
         )
         guard writer.canAdd(writerInput) else {
@@ -220,7 +231,19 @@ struct OverlayVideoExporter {
                         return
                     }
 
-                    adaptor.append(renderedBuffer, withPresentationTime: time)
+                    // A false result means the writer has already failed. Continuing to append
+                    // would run the whole clip and then surface a generic error with no cause.
+                    guard adaptor.append(renderedBuffer, withPresentationTime: time) else {
+                        let reason = writer.error?.localizedDescription ?? "pixel buffer rejected"
+                        Self.log.error(
+                            "append failed at \(time.seconds, privacy: .public)s: \(reason, privacy: .public)"
+                        )
+                        writerInput.markAsFinished()
+                        completion.finish {
+                            continuation.resume(throwing: ExportError.writerFailed(reason))
+                        }
+                        return
+                    }
 
                     // Only report when the whole percentage changes: at 30 fps the old per-frame
                     // callback meant ~1800 main-actor hops per minute of video.
@@ -303,10 +326,15 @@ struct OverlayVideoExporter {
     /// already at or below the cap is passed through untouched.
     static func outputSize(for uprightSize: CGSize) -> CGSize {
         let longestEdge = max(uprightSize.width, uprightSize.height)
-        guard longestEdge > maximumOutputEdge, longestEdge > 0 else { return uprightSize }
+        guard longestEdge > 0 else { return uprightSize }
+
+        // Applied even when no downscale is needed: H.264 rejects odd dimensions, and rotating a
+        // track can yield an odd upright size.
+        guard longestEdge > maximumOutputEdge else {
+            return CGSize(width: uprightSize.width.evenized, height: uprightSize.height.evenized)
+        }
 
         let scale = maximumOutputEdge / longestEdge
-        // Even dimensions keep H.264 encoders happy.
         return CGSize(
             width: (uprightSize.width * scale).rounded().evenized,
             height: (uprightSize.height * scale).rounded().evenized

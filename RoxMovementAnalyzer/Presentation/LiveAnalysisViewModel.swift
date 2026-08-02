@@ -120,6 +120,16 @@ final class LiveAnalysisViewModel {
         cameraService.stopSession()
     }
 
+    /// Restarts the camera after a finished set released it.
+    ///
+    /// Navigating to playback pushes on top of this screen rather than replacing it, so `.task`
+    /// does not run again on the way back — the view calls this from `onAppear` instead.
+    /// Both capture services no-op when already running or not yet configured.
+    func resumeSession() {
+        guard recordingState == .completed || recordingState == .ready else { return }
+        cameraService.startSession()
+    }
+
     func switchCamera() {
         guard recordingState != .recording else {
             currentCue = LiveFeedbackCue(
@@ -147,6 +157,9 @@ final class LiveAnalysisViewModel {
 
     private func startRecording() {
         do {
+            // The previous set released the camera, so make sure it is running before recording
+            // again. No-ops when it already is.
+            cameraService.startSession()
             try cameraService.startRecording()
             capturedFrames.removeAll(keepingCapacity: true)
             liveRepAnalyzer = WallBallRepAnalyzer()
@@ -204,6 +217,13 @@ final class LiveAnalysisViewModel {
 
     private func finishSession() {
         recordingState = .completed
+
+        // Release the camera before replay and the overlay export start. Playback pushes on top
+        // of this screen rather than replacing it, so `onDisappear` never fires and the capture
+        // session would otherwise keep running alongside an AVPlayer, an asset reader and an
+        // asset writer — enough concurrent pipelines to take mediaserverd down, which surfaces
+        // as the export failing with a generic "cannot complete action".
+        cameraService.stopSession()
 
         if canReviewVideo {
             showsPlayback = true

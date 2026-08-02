@@ -65,6 +65,11 @@ struct LiveAnalysisView: View {
             startDebugVideoIfNeeded()
             #endif
         }
+        .onAppear {
+            // Returning from playback: the camera was released when the set finished, and `.task`
+            // does not run again after a push, so restart the preview here.
+            viewModel.resumeSession()
+        }
         .onDisappear {
             viewModel.stopSession()
         }
