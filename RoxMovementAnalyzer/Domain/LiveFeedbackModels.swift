@@ -12,6 +12,31 @@ protocol LiveFeedbackGenerating {
     func readyCue(for station: HyroxStation) -> LiveFeedbackCue
     func recordingCue(for station: HyroxStation) -> LiveFeedbackCue
     func completedCue(for station: HyroxStation) -> LiveFeedbackCue
+    /// Coaching cue for an inefficiency detected on the rep just finished.
+    func faultCue(for fault: WallBallFault, station: HyroxStation) -> LiveFeedbackCue
+    /// Shown when the hands leave frame during the throw, so release cannot be measured.
+    func framingCue(for station: HyroxStation) -> LiveFeedbackCue
+}
+
+extension LiveFeedbackGenerating {
+    func faultCue(for fault: WallBallFault, station: HyroxStation) -> LiveFeedbackCue {
+        LiveFeedbackCue(
+            station: station,
+            message: fault.liveMessage,
+            detail: fault.coachingDetail,
+            status: fault.severity == .high ? .needsWork : .caution
+        )
+    }
+
+    func framingCue(for station: HyroxStation) -> LiveFeedbackCue {
+        LiveFeedbackCue(
+            station: station,
+            message: "Leave room overhead",
+            detail: "Your hands go out of frame at the top of the throw, so release timing can't be "
+                + "measured. Step back or tilt the phone up.",
+            status: .caution
+        )
+    }
 }
 
 struct StationRuleLiveFeedbackGenerator: LiveFeedbackGenerating {

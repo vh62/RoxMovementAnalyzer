@@ -35,6 +35,9 @@ struct LiveAnalysisView: View {
                 .overlay(alignment: .top) {
                     liveRepBadge
                 }
+                .overlay(alignment: .bottomLeading) {
+                    tuningReadout
+                }
 
             VStack(spacing: 12) {
                 cueCard
@@ -96,6 +99,22 @@ struct LiveAnalysisView: View {
                 .disabled(viewModel.recordingState == .recording)
                 .accessibilityLabel("Switch camera")
 
+                if viewModel.showsLiveRepCount {
+                    Button {
+                        viewModel.showsTuningReadout.toggle()
+                    } label: {
+                        Image(systemName: viewModel.showsTuningReadout ? "ruler.fill" : "ruler")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 32)
+                            .background(.black.opacity(0.58))
+                            .clipShape(Capsule())
+                    }
+                    .accessibilityLabel(
+                        viewModel.showsTuningReadout ? "Hide measurements" : "Show measurements"
+                    )
+                }
+
                 Menu {
                     ForEach(HyroxStation.allCases) { station in
                         Button(station.rawValue) {
@@ -156,6 +175,27 @@ struct LiveAnalysisView: View {
         if viewModel.recordingState == .recording, viewModel.showsLiveRepCount {
             RepCountBadge(count: viewModel.liveRepCount)
                 .padding(.top, 72)
+        }
+    }
+
+    /// Raw measurements from the last completed rep, for calibrating `WallBallThresholds`.
+    @ViewBuilder
+    private var tuningReadout: some View {
+        if viewModel.showsTuningReadout, let rep = viewModel.latestRep {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("REP \(rep.index + 1) · \(rep.viewpoint.rawValue)")
+                    .font(.caption2.weight(.black))
+                Text("depth  \(String(format: "%+.3f", rep.deepestDelta))")
+                Text("release \(rep.releaseOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")")
+                Text("reach  \(rep.catchReach.map { String(format: "%.2f", $0) } ?? "—")")
+                Text("hands  \(rep.handsTracked ? "tracked" : "lost")")
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.white)
+            .padding(8)
+            .background(.black.opacity(0.65))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .padding(.horizontal, 16)
         }
     }
 

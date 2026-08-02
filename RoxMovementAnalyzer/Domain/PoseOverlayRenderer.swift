@@ -19,6 +19,8 @@ struct PoseOverlayRenderer {
         let validReps: Int
         /// Set on the frames where a rep was just counted, driving the "REP N — COUNTED" callout.
         let justCountedRep: Bool
+        /// An inefficiency detected on the rep just finished, called out instead of the count.
+        var fault: WallBallFault?
     }
 
     let showsDepthGuide: Bool
@@ -40,9 +42,12 @@ struct PoseOverlayRenderer {
         drawLandmarks(pose, in: context, size: size, scale: scale)
         drawRepBadge(frame, in: context, size: size, scale: scale)
 
-        if showsDepthGuide, frame.justCountedRep,
-           let guide = PoseOverlayGeometry.depthGuide(for: pose) {
-            drawRepCallout(frame, guide: guide, in: context, size: size, scale: scale)
+        if showsDepthGuide {
+            if let fault = frame.fault {
+                drawFaultCallout(fault, in: context, size: size, scale: scale)
+            } else if frame.justCountedRep, let guide = PoseOverlayGeometry.depthGuide(for: pose) {
+                drawRepCallout(frame, guide: guide, in: context, size: size, scale: scale)
+            }
         }
     }
 
@@ -177,6 +182,22 @@ struct PoseOverlayRenderer {
             at: CGPoint(x: 16 * scale, y: size.height - 44 * scale),
             fontSize: 14 * scale,
             color: CGColor(red: 0.19, green: 0.82, blue: 0.48, alpha: 1),
+            in: context,
+            background: CGColor(gray: 0, alpha: 0.6)
+        )
+    }
+
+    private func drawFaultCallout(
+        _ fault: WallBallFault,
+        in context: CGContext,
+        size: CGSize,
+        scale: CGFloat
+    ) {
+        drawText(
+            fault.title.uppercased() + "  ·  " + fault.liveMessage,
+            at: CGPoint(x: 16 * scale, y: size.height - 44 * scale),
+            fontSize: 14 * scale,
+            color: CGColor(red: 1, green: 0.42, blue: 0.35, alpha: 1),
             in: context,
             background: CGColor(gray: 0, alpha: 0.6)
         )

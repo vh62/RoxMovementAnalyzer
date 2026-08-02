@@ -77,6 +77,7 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
 
     private func wallBallScore(frames: [PoseFrame]) -> StationScore {
         let result = wallBallCounter.evaluate(frames: frames)
+        let reps = WallBallRepAnalyzer.analyze(frames: frames)
 
         guard result.attempts > 0 else {
             return StationScore(
@@ -105,6 +106,8 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
             metrics.append(MetricResult(label: "Shallow reps", value: "\(depthMisses)", status: .caution))
         }
 
+        metrics.append(contentsOf: efficiencyMetrics(for: reps))
+
         var alerts: [RedFlagAlert] = []
         if depthMisses > 0 {
             alerts.append(
@@ -113,10 +116,12 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
                     title: "Squat depth misses",
                     message: "\(depthMisses) of \(result.attempts) squats did not reach hip-below-knee depth. Sink the hips lower before the throw.",
                     severity: accuracy < 0.6 ? .high : .medium,
-                    timestamp: nil
+                    timestamp: reps.first { !$0.reachedDepth }?.bottomSeconds
                 )
             )
         }
+
+        alerts.append(contentsOf: efficiencyAlerts(for: reps))
 
         return StationScore(
             station: .wallBalls,
@@ -127,6 +132,72 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
             metrics: metrics,
             alerts: alerts
         )
+    }
+
+    /// Release-timing and catch-position readouts, alongside the depth numbers.
+    private func efficiencyMetrics(for reps: [WallBallRep]) -> [MetricResult] {
+        var metrics: [MetricResult] = []
+
+        let offsets = reps.compactMap(\.releaseOffset)
+        if !offsets.isEmpty {
+            let average = offsets.reduce(0, +) / Double(offsets.count)
+            let earlyCount = reps.filter { $0.hasFault(.earlyRelease) }.count
+            let lateCount = reps.filter { $0.hasFault(.lateRelease) }.count
+            let offCount = earlyCount + lateCount
+
+            metrics.append(
+                MetricResult(
+                    label: "Release timing",
+                    value: String(format: "%+.0f ms", average * 1000),
+                    status: offCount == 0 ? .strong : (offCount > reps.count / 3 ? .needsWork : .caution)
+                )
+            )
+        }
+
+        let reaches = reps.compactMap(\.catchReach)
+        if !reaches.isEmpty {
+            let average = reaches.reduce(0, +) / Double(reaches.count)
+            let farCount = reps.filter { $0.hasFault(.catchTooFarForward) }.count
+
+            metrics.append(
+                MetricResult(
+                    label: "Catch distance",
+                    value: String(format: "%.2f torso", average),
+                    status: farCount == 0 ? .strong : (farCount > reps.count / 3 ? .needsWork : .caution)
+                )
+            )
+        } else if let viewpoint = reps.last?.viewpoint, !viewpoint.supportsReachMeasurement {
+            // Say why rather than silently omitting it.
+            metrics.append(
+                MetricResult(label: "Catch distance", value: "Needs side view", status: .caution)
+            )
+        }
+
+        if reps.contains(where: { !$0.handsTracked }) {
+            metrics.append(
+                MetricResult(label: "Hands in frame", value: "Partial", status: .caution)
+            )
+        }
+
+        return metrics
+    }
+
+    /// One alert per fault kind, pointing at the first rep where it happened so the scorecard can
+    /// jump the replay to that moment.
+    private func efficiencyAlerts(for reps: [WallBallRep]) -> [RedFlagAlert] {
+        WallBallFault.Kind.allCases.compactMap { kind in
+            let offending = reps.filter { $0.hasFault(kind) }
+            guard let first = offending.first,
+                  let fault = first.faults.first(where: { $0.kind == kind }) else { return nil }
+
+            return RedFlagAlert(
+                station: .wallBalls,
+                title: fault.title,
+                message: "\(offending.count) of \(reps.count) reps. \(fault.coachingDetail)",
+                severity: offending.count > reps.count / 3 ? fault.severity : .low,
+                timestamp: first.releaseSeconds ?? first.endSeconds
+            )
+        }
     }
 
     private func depthStatus(_ accuracy: Double) -> StationStatus {

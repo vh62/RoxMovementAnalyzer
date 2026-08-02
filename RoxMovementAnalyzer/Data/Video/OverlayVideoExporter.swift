@@ -245,7 +245,8 @@ struct OverlayVideoExporter {
                 PoseOverlayRenderer.Frame(
                     pose: entry.frame,
                     validReps: entry.validReps,
-                    justCountedRep: entry.isCelebratingRep(at: seconds)
+                    justCountedRep: entry.isCelebratingRep(at: seconds),
+                    fault: timeline.activeFault(at: seconds)
                 ),
                 in: context,
                 size: renderSize

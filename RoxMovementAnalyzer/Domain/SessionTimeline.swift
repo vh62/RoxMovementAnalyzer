@@ -28,9 +28,17 @@ struct SessionTimeline: Equatable {
     /// hides rather than freezing on a pose the athlete has already left.
     static let stalenessWindow: Double = 0.25
 
+    /// How long a rep's fault stays called out on the overlay after the rep finishes.
+    static let faultCalloutWindow: Double = 1.6
+
     private(set) var entries: [Entry]
+    /// Per-rep analysis for the session, empty for stations without rep analysis.
+    private(set) var reps: [WallBallRep]
 
     var isEmpty: Bool { entries.isEmpty }
+
+    /// Reps where at least one movement inefficiency was detected.
+    var faultedReps: [WallBallRep] { reps.filter { !$0.faults.isEmpty } }
 
     /// Length of the tracked portion of the session, in seconds.
     var duration: Double { entries.last?.seconds ?? 0 }
@@ -46,8 +54,12 @@ struct SessionTimeline: Equatable {
     init(frames: [PoseFrame], station: HyroxStation) {
         guard let firstTimestamp = frames.first?.timestampInMilliseconds else {
             self.entries = []
+            self.reps = []
             return
         }
+
+        // The analyzer anchors on the same first frame, so its seconds share this timeline's origin.
+        self.reps = station == .wallBalls ? WallBallRepAnalyzer.analyze(frames: frames) : []
 
         let countsReps = station == .wallBalls
         var counter = WallBallRepCounter()
@@ -93,6 +105,23 @@ struct SessionTimeline: Equatable {
     func validReps(at seconds: Double) -> Int {
         guard let index = indexOfEntry(at: seconds) else { return 0 }
         return entries[index].validReps
+    }
+
+    /// The fault worth calling out at `seconds` — the most recently finished faulted rep, held on
+    /// screen briefly so it is readable rather than flashing for a single frame.
+    func activeFault(at seconds: Double) -> WallBallFault? {
+        activeFaultedRep(at: seconds)?.faults.first
+    }
+
+    func activeFaultedRep(at seconds: Double) -> WallBallRep? {
+        faultedReps.last {
+            seconds >= $0.endSeconds && seconds - $0.endSeconds <= Self.faultCalloutWindow
+        }
+    }
+
+    /// The rep in progress at `seconds`, for the tuning readout.
+    func rep(at seconds: Double) -> WallBallRep? {
+        reps.last { seconds >= $0.startSeconds && seconds <= $0.endSeconds + Self.faultCalloutWindow }
     }
 
     /// Index of the last entry at or before `seconds`, via binary search over the sorted entries.

@@ -17,6 +17,7 @@ struct SessionPlaybackView: View {
     @State private var duration: Double = 0
     @State private var isPlaying = false
     @State private var isScrubbing = false
+    @State private var showsTuning = false
     @State private var timeObserver: Any?
     @State private var endOfPlaybackObserver: (any NSObjectProtocol)?
 
@@ -46,6 +47,15 @@ struct SessionPlaybackView: View {
         .navigationTitle("Session Replay")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showsTuning.toggle()
+                } label: {
+                    Image(systemName: showsTuning ? "ruler.fill" : "ruler")
+                }
+                .accessibilityLabel(showsTuning ? "Hide measurements" : "Show measurements")
+            }
+
             if scorecard != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink("Scorecard") {
@@ -82,7 +92,67 @@ struct SessionPlaybackView: View {
                         .padding(.top, 16)
                 }
             }
+            .overlay(alignment: .bottom) {
+                faultBanner
+            }
+            .overlay(alignment: .bottomTrailing) {
+                tuningReadout
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Calls out the inefficiency on the rep that just finished, mirroring the burned-in export.
+    @ViewBuilder
+    private var faultBanner: some View {
+        if let fault = timeline.activeFault(at: currentTime) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(fault.title)
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
+                Text(fault.liveMessage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.red.opacity(0.78))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+            .transition(.opacity)
+            .animation(.snappy, value: fault)
+        }
+    }
+
+    /// Raw measurements for the rep at the playhead, for calibrating `WallBallThresholds`.
+    @ViewBuilder
+    private var tuningReadout: some View {
+        if showsTuning, let rep = timeline.rep(at: currentTime) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("REP \(rep.index + 1) · \(rep.viewpoint.rawValue)")
+                    .font(.caption2.weight(.black))
+                readoutRow("depth", String(format: "%+.3f", rep.deepestDelta))
+                readoutRow("release", rep.releaseOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")
+                readoutRow("reach", rep.catchReach.map { String(format: "%.2f", $0) } ?? "—")
+                readoutRow("hands", rep.handsTracked ? "tracked" : "lost")
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.white)
+            .padding(8)
+            .background(.black.opacity(0.65))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .padding(12)
+        }
+    }
+
+    private func readoutRow(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label).foregroundStyle(.white.opacity(0.6))
+            Spacer(minLength: 8)
+            Text(value)
+        }
+        .frame(width: 128, alignment: .leading)
     }
 
     private var controls: some View {
@@ -109,6 +179,7 @@ struct SessionPlaybackView: View {
                 )
                 .tint(.white)
                 .accessibilityLabel("Playback position")
+                .overlay(alignment: .leading) { faultMarkers }
 
                 Text(Self.timeLabel(duration))
                     .font(.caption.weight(.bold).monospacedDigit())
@@ -118,6 +189,23 @@ struct SessionPlaybackView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .background(.black)
+    }
+
+    /// Ticks along the scrubber showing where the faulted reps are, so they can be found without
+    /// scrubbing blind.
+    @ViewBuilder
+    private var faultMarkers: some View {
+        if duration > 0, !timeline.faultedReps.isEmpty {
+            GeometryReader { proxy in
+                ForEach(timeline.faultedReps) { rep in
+                    Capsule()
+                        .fill(.red)
+                        .frame(width: 2.5, height: 10)
+                        .offset(x: proxy.size.width * min(rep.endSeconds / duration, 1) - 1.25)
+                }
+            }
+            .allowsHitTesting(false)
+        }
     }
 
     // MARK: - Export

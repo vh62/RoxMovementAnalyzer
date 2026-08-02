@@ -32,6 +32,10 @@ final class LiveAnalysisViewModel {
     /// Pose frames of the session just captured, aligned to video playback time.
     var sessionTimeline: SessionTimeline?
     var showsPlayback = false
+    /// Most recently completed rep, powering the tuning readout.
+    var latestRep: WallBallRep?
+    /// Shows raw per-rep measurements so thresholds can be calibrated against real footage.
+    var showsTuningReadout = false
 
     /// Whether the finished session can be watched back with its overlay.
     var canReviewVideo: Bool { sessionVideoURL != nil && !(sessionTimeline?.isEmpty ?? true) }
@@ -47,8 +51,12 @@ final class LiveAnalysisViewModel {
     private let sessionAnalyzer: LiveSessionAnalyzing
     private var poseEstimator: PoseEstimating?
     private var capturedFrames: [PoseFrame] = []
-    private var liveRepCounter = WallBallRepCounter()
+    private var liveRepAnalyzer = WallBallRepAnalyzer()
     private var recordingFinishTask: Task<Void, Never>?
+    private var cueHoldUntil: Date?
+
+    /// How long a fault cue stays on screen before the standing cue returns.
+    private static let faultCueDuration: TimeInterval = 2.5
 
     init(
         selectedStation: HyroxStation = .wallBalls,
@@ -139,8 +147,10 @@ final class LiveAnalysisViewModel {
         do {
             try cameraService.startRecording()
             capturedFrames.removeAll(keepingCapacity: true)
-            liveRepCounter = WallBallRepCounter()
+            liveRepAnalyzer = WallBallRepAnalyzer()
             liveRepCount = 0
+            latestRep = nil
+            cueHoldUntil = nil
             sessionScorecard = nil
             sessionVideoURL = nil
             sessionTimeline = nil
@@ -235,10 +245,42 @@ final class LiveAnalysisViewModel {
         capturedFrames.append(poseFrame)
 
         if selectedStation == .wallBalls {
-            liveRepCounter.process(poseFrame)
-            liveRepCount = liveRepCounter.result.validReps
+            let previousRepCount = liveRepAnalyzer.completedReps.count
+            liveRepAnalyzer.process(poseFrame)
+            liveRepCount = liveRepAnalyzer.validRepsSoFar
+
+            if liveRepAnalyzer.completedReps.count > previousRepCount,
+               let rep = liveRepAnalyzer.completedReps.last {
+                handleCompletedRep(rep)
+            }
         }
 
+        refreshCueIfExpired()
+    }
+
+    /// Shows coaching for the rep just finished, held long enough to read before the standing cue
+    /// returns.
+    private func handleCompletedRep(_ rep: WallBallRep) {
+        latestRep = rep
+
+        if let fault = rep.faults.first {
+            currentCue = feedbackGenerator.faultCue(for: fault, station: selectedStation)
+            cueHoldUntil = Date().addingTimeInterval(Self.faultCueDuration)
+        } else if !rep.handsTracked {
+            currentCue = feedbackGenerator.framingCue(for: selectedStation)
+            cueHoldUntil = Date().addingTimeInterval(Self.faultCueDuration)
+        }
+    }
+
+    /// Restores the standing recording cue once a fault cue has had its time.
+    ///
+    /// The cue is deliberately not reassigned every frame: `LiveFeedbackCue.id` is a fresh UUID, so
+    /// two identical cues never compare equal and reassigning would churn observation 30–60×/second.
+    private func refreshCueIfExpired() {
+        guard let hold = cueHoldUntil else { return }
+        guard Date() >= hold else { return }
+
+        cueHoldUntil = nil
         currentCue = feedbackGenerator.recordingCue(for: selectedStation)
     }
 }
