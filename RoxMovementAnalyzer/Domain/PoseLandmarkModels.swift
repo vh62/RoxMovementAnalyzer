@@ -13,15 +13,25 @@ struct PoseFrame: Equatable {
         names.allSatisfy { landmark($0)?.isVisible ?? false }
     }
 
-    /// Whether the core full-body joints — shoulders, hips, knees, and ankles on both sides — are
-    /// all confidently tracked, i.e. the whole athlete is in frame.
+    /// Whether at least one of a left/right pair is tracked.
+    ///
+    /// Filmed from the side, the far limb is hidden behind the near one and comes back at low
+    /// confidence, so requiring both sides of a joint is a test no side-on footage can pass.
+    func isEitherVisible(_ first: PoseLandmarkName, _ second: PoseLandmarkName) -> Bool {
+        (landmark(first)?.isVisible ?? false) || (landmark(second)?.isVisible ?? false)
+    }
+
+    /// Whether the whole athlete is in frame: shoulders, hips, knees and ankles each tracked on
+    /// at least one side.
+    ///
+    /// A body region counts as trackable when either side of it is visible — the same rule the
+    /// depth measurement uses. Individual occluded joints are still filtered out when drawing, so
+    /// the far limb simply does not appear rather than blocking the whole skeleton.
     var hasFullBody: Bool {
-        areVisible(
-            .leftShoulder, .rightShoulder,
-            .leftHip, .rightHip,
-            .leftKnee, .rightKnee,
-            .leftAnkle, .rightAnkle
-        )
+        isEitherVisible(.leftShoulder, .rightShoulder)
+            && isEitherVisible(.leftHip, .rightHip)
+            && isEitherVisible(.leftKnee, .rightKnee)
+            && isEitherVisible(.leftAnkle, .rightAnkle)
     }
 
     /// Average normalized y of whichever of the given landmarks are confidently tracked (one or more).

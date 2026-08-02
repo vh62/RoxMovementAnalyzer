@@ -209,18 +209,13 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
         }
     }
 
-    /// Fraction of captured frames in which the core lower- and upper-body joints were all confidently tracked.
+    /// Fraction of captured frames in which the whole athlete was tracked.
+    ///
+    /// Defers to `PoseFrame.hasFullBody` rather than repeating the joint list, so this metric
+    /// cannot drift from the rule the overlay uses to decide whether to draw.
     private func fullBodyCoverage(_ frames: [PoseFrame]) -> Double {
         guard !frames.isEmpty else { return 0 }
-        let fullBodyFrames = frames.filter {
-            $0.areVisible(
-                .leftShoulder, .rightShoulder,
-                .leftHip, .rightHip,
-                .leftKnee, .rightKnee,
-                .leftAnkle, .rightAnkle
-            )
-        }
-        return Double(fullBodyFrames.count) / Double(frames.count)
+        return Double(frames.filter(\.hasFullBody).count) / Double(frames.count)
     }
 
     private func sessionDuration(_ frames: [PoseFrame]) -> Double {
