@@ -2,6 +2,7 @@ import AVFoundation
 import SwiftUI
 
 struct LiveAnalysisView: View {
+    @Environment(SessionExportService.self) private var exportService
     @State private var viewModel: LiveAnalysisViewModel
 
     @MainActor
@@ -53,6 +54,16 @@ struct LiveAnalysisView: View {
         }
         .onDisappear {
             viewModel.stopSession()
+        }
+        .onChange(of: viewModel.sessionVideoURL) { _, url in
+            // Burn the overlay in as soon as the recording lands. The service is app-scoped, so
+            // this keeps running while the athlete reviews their scorecard or leaves the screen.
+            guard let url, let timeline = viewModel.sessionTimeline else { return }
+            exportService.start(
+                sourceURL: url,
+                timeline: timeline,
+                station: viewModel.selectedStation
+            )
         }
         .navigationDestination(isPresented: $viewModel.showsScorecard) {
             if let scorecard = viewModel.sessionScorecard {
@@ -470,4 +481,5 @@ private struct PoseAngleLabel: Identifiable {
     NavigationStack {
         LiveAnalysisView(selectedStation: .wallBalls)
     }
+    .environment(SessionExportService())
 }

@@ -16,12 +16,17 @@ struct ScorecardView: View {
             VStack(alignment: .leading, spacing: 20) {
                 OverallTechniqueHeader(scorecard: viewModel.scorecard, summary: viewModel.summary)
 
+                // The session video is still exporting while this is read; report it here so the
+                // athlete does not have to go back to playback to find out where it got to.
+                SessionExportStatusView(style: .light)
+
                 if !viewModel.summary.criticalAlerts.isEmpty {
                     RedFlagStrip(alerts: Array(viewModel.summary.criticalAlerts.prefix(5)))
                 }
 
                 stationSection
                 recommendationSection
+                videoSettingsSection
             }
             .padding(20)
         }
@@ -31,6 +36,24 @@ struct ScorecardView: View {
         .sheet(item: $selectedStation) { station in
             StationDetailView(station: station)
                 .presentationDetents([.medium, .large])
+        }
+    }
+
+    private var videoSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Session Video", subtitle: "Where your recordings end up")
+
+            VStack(alignment: .leading, spacing: 6) {
+                AutoSaveToggle()
+                Text("Your set is saved with the skeleton, depth line and rep count drawn on.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .shadow(color: .black.opacity(0.06), radius: 12, y: 6)
         }
     }
 
@@ -81,4 +104,5 @@ struct ScorecardView: View {
     NavigationStack {
         ScorecardView()
     }
+    .environment(SessionExportService())
 }

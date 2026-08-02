@@ -133,4 +133,5 @@ struct TrainingHubView: View {
 
 #Preview("Training Hub") {
     TrainingHubView()
+        .environment(SessionExportService())
 }
