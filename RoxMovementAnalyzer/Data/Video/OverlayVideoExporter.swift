@@ -84,12 +84,18 @@ struct OverlayVideoExporter {
         let orientation = Self.orientation(for: transform)
         let duration = try await asset.load(.duration).seconds
 
+        // The transform is included because it is what decides the exported orientation: a
+        // portrait recording is landscape pixels plus a quarter turn, and an identity transform
+        // on landscape pixels means the recording itself is landscape.
         Self.log.info("""
             exporting \(Int(naturalSize.width), privacy: .public)x\
             \(Int(naturalSize.height), privacy: .public) \
             -> \(Int(renderSize.width), privacy: .public)x\
             \(Int(renderSize.height), privacy: .public), \
-            \(duration, privacy: .public)s
+            \(duration, privacy: .public)s, \
+            transform [\(transform.a, privacy: .public) \(transform.b, privacy: .public) \
+            \(transform.c, privacy: .public) \(transform.d, privacy: .public)] \
+            -> \(String(describing: orientation), privacy: .public)
             """)
 
         let reader = try AVAssetReader(asset: asset)

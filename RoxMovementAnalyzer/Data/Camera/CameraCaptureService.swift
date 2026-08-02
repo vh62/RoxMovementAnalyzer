@@ -2,6 +2,7 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import Foundation
+import os
 
 enum CameraAuthorizationState: Equatable {
     case notDetermined
@@ -71,6 +72,8 @@ enum CameraCaptureError: LocalizedError {
 }
 
 final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
+    private static let log = Logger(subsystem: "rox.camera", category: "CaptureService")
+
     let session = AVCaptureSession()
     var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)?
     var recordingFinishedHandler: ((Result<URL, Error>) -> Void)?
@@ -143,11 +146,22 @@ final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
         let portraitAngle: CGFloat = 90
         let shouldMirror = activeCameraPosition == .front
 
-        for output in [videoOutput as AVCaptureOutput, movieOutput as AVCaptureOutput] {
-            guard let connection = output.connection(with: .video) else { continue }
+        for (label, output) in [("video", videoOutput as AVCaptureOutput),
+                                ("movie", movieOutput as AVCaptureOutput)] {
+            guard let connection = output.connection(with: .video) else {
+                Self.log.error("no video connection for the \(label, privacy: .public) output")
+                continue
+            }
 
             if connection.isVideoRotationAngleSupported(portraitAngle) {
                 connection.videoRotationAngle = portraitAngle
+            } else {
+                // Previously skipped silently, which is how a landscape recording could come out
+                // of a portrait-framed session with nothing reported anywhere.
+                Self.log.error(
+                    "\(label, privacy: .public) output cannot rotate to portrait; "
+                        + "recording will stay in sensor orientation"
+                )
             }
 
             if connection.isVideoMirroringSupported {
@@ -155,6 +169,16 @@ final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
                 connection.isVideoMirrored = shouldMirror
             }
         }
+    }
+
+    /// Reports what the outputs will actually record, so an orientation problem names itself.
+    private func logConnectionOrientation() {
+        let video = videoOutput.connection(with: .video)?.videoRotationAngle ?? -1
+        let movie = movieOutput.connection(with: .video)?.videoRotationAngle ?? -1
+        Self.log.info(
+            "recording with rotation — video output: \(video, privacy: .public)°, "
+                + "movie output: \(movie, privacy: .public)°"
+        )
     }
 
     func startSession() {
@@ -176,6 +200,13 @@ final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
     func startRecording() throws {
         guard isConfigured else { throw CameraCaptureError.cameraUnavailable }
         guard !movieOutput.isRecording else { return }
+
+        // Re-apply rotation here, outside the session configuration block where it was first set.
+        // The movie connection is what decides the recorded file's orientation, and it has to be
+        // right at the moment recording starts — otherwise the file comes out in sensor
+        // orientation (landscape) even though the data output feeding the pose model is upright.
+        configureOutputConnections()
+        logConnectionOrientation()
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("rox-live-analysis-")
