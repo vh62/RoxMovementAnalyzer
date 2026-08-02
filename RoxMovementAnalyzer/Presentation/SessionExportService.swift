@@ -131,6 +131,8 @@ final class SessionExportService {
             defer { UIApplication.shared.endBackgroundTask(backgroundTask) }
 
             do {
+                // The exporter reports only when the whole percentage changes, so hopping to the
+                // main actor here costs ~100 updates for a whole export rather than one per frame.
                 let url = try await exporter.export(sourceURL: request.sourceURL) { progress in
                     Task { @MainActor [weak self] in
                         guard let self, case .exporting = self.job else { return }
