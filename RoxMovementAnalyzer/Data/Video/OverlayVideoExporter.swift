@@ -80,10 +80,8 @@ struct OverlayVideoExporter {
             height: abs(naturalSize.applying(transform).height)
         )
         let renderSize = Self.outputSize(for: uprightSize)
-        // Combined rotate-and-scale applied to every frame on the GPU.
-        let renderTransform = Self.renderTransform(
-            naturalSize: naturalSize, transform: transform, outputSize: renderSize
-        )
+        // Core Image applies the rotation via the orientation; the exporter only has to scale.
+        let orientation = Self.orientation(for: transform)
         let duration = try await asset.load(.duration).seconds
 
         Self.log.info("""
@@ -155,7 +153,7 @@ struct OverlayVideoExporter {
             writerInput: writerInput,
             adaptor: adaptor,
             renderSize: renderSize,
-            renderTransform: renderTransform,
+            orientation: orientation,
             duration: duration,
             progress: progress
         )
@@ -182,7 +180,7 @@ struct OverlayVideoExporter {
         writerInput: AVAssetWriterInput,
         adaptor: AVAssetWriterInputPixelBufferAdaptor,
         renderSize: CGSize,
-        renderTransform: CGAffineTransform,
+        orientation: CGImagePropertyOrientation,
         duration: Double,
         progress: (@Sendable (Double) -> Void)?
     ) async throws {
@@ -221,7 +219,7 @@ struct OverlayVideoExporter {
                             into: renderedBuffer,
                             at: time.seconds,
                             renderSize: renderSize,
-                            renderTransform: renderTransform,
+                            orientation: orientation,
                             ciContext: ciContext,
                             colorSpace: colorSpace
                         )
@@ -270,11 +268,25 @@ struct OverlayVideoExporter {
         into destination: CVPixelBuffer,
         at seconds: Double,
         renderSize: CGSize,
-        renderTransform: CGAffineTransform,
+        orientation: CGImagePropertyOrientation,
         ciContext: CIContext,
         colorSpace: CGColorSpace
     ) throws {
-        let frameImage = CIImage(cvPixelBuffer: source).transformed(by: renderTransform)
+        // `oriented` turns the frame upright in Core Image's own coordinate space; scaling then
+        // only has to fit it to the output size.
+        let upright = CIImage(cvPixelBuffer: source).oriented(orientation)
+        let extent = upright.extent
+        guard extent.width > 0, extent.height > 0 else { return }
+
+        let frameImage = upright.transformed(
+            by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY)
+                .concatenating(
+                    CGAffineTransform(
+                        scaleX: renderSize.width / extent.width,
+                        y: renderSize.height / extent.height
+                    )
+                )
+        )
         // Synchronous, so the overlay draw below safely lands on top of the rendered frame.
         ciContext.render(
             frameImage,
@@ -341,30 +353,29 @@ struct OverlayVideoExporter {
         )
     }
 
-    /// Combines the track's rotation with the downscale into one transform, so each frame is
-    /// rotated and resized in a single GPU pass.
+    /// The image orientation matching a video track's `preferredTransform`.
     ///
-    /// The previous implementation computed the rotated size but never applied the transform, so
-    /// a rotated source was stretched into the rotated dimensions instead of turned.
-    static func renderTransform(
-        naturalSize: CGSize,
-        transform: CGAffineTransform,
-        outputSize: CGSize
-    ) -> CGAffineTransform {
-        // Applying the rotation can move the image off-origin; shift it back into frame.
-        let rotated = CGRect(origin: .zero, size: naturalSize).applying(transform)
-        let recentred = transform.concatenating(
-            CGAffineTransform(translationX: -rotated.minX, y: -rotated.minY)
-        )
+    /// The transform must not be applied to a `CIImage` directly: it is expressed in a top-left
+    /// origin space while Core Image works bottom-left, so applying it verbatim mirrors the
+    /// rotation — a portrait clip comes out upside down. Converting to an orientation and using
+    /// `CIImage.oriented(_:)` lets Core Image reconcile the two coordinate spaces itself.
+    static func orientation(for transform: CGAffineTransform) -> CGImagePropertyOrientation {
+        // Matched with a tolerance rather than exactly: AVFoundation's own transforms hold exact
+        // integers, but anything derived from an angle carries float error (a quarter turn gives
+        // a = 6e-17, not 0), and an exact match would silently fall back to upright and misorient
+        // the export. Only a/b/c/d matter — real transforms also carry a translation.
+        func matches(_ a: CGFloat, _ b: CGFloat, _ c: CGFloat, _ d: CGFloat) -> Bool {
+            let tolerance: CGFloat = 0.001
+            return abs(transform.a - a) < tolerance
+                && abs(transform.b - b) < tolerance
+                && abs(transform.c - c) < tolerance
+                && abs(transform.d - d) < tolerance
+        }
 
-        guard rotated.width > 0, rotated.height > 0 else { return recentred }
-
-        return recentred.concatenating(
-            CGAffineTransform(
-                scaleX: outputSize.width / rotated.width,
-                y: outputSize.height / rotated.height
-            )
-        )
+        if matches(0, 1, -1, 0) { return .right }   // 90° clockwise — portrait
+        if matches(0, -1, 1, 0) { return .left }    // 90° anticlockwise — portrait the other way
+        if matches(-1, 0, 0, -1) { return .down }   // 180°
+        return .up                                  // identity, or unrecognised
     }
 
     /// Metal-backed where possible so frame scaling runs on the GPU, falling back to the default

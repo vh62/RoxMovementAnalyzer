@@ -87,41 +87,64 @@ final class OverlayVideoExporterGeometryTests: XCTestCase {
         XCTAssertEqual(landscape.width / landscape.height, 3840.0 / 2160.0, accuracy: 0.02)
     }
 
-    // MARK: - Render transform
+    // MARK: - Orientation derivation
 
-    func testRotatedSourceFillsTheOutputUpright() {
-        // A portrait recording: landscape sensor frames carrying a quarter-turn.
-        let natural = CGSize(width: 1920, height: 1080)
-        let rotation = CGAffineTransform(rotationAngle: .pi / 2)
-        let upright = CGSize(
-            width: abs(natural.applying(rotation).width),
-            height: abs(natural.applying(rotation).height)
+    /// `preferredTransform` is expressed in a top-left origin space while Core Image works
+    /// bottom-left. Applying it to a CIImage directly mirrors the rotation and the export comes out
+    /// upside down, so it is converted to an orientation and handed to `CIImage.oriented(_:)`.
+    ///
+    /// Note the earlier rect-based transform tests could not have caught that: a vertical flip
+    /// leaves the bounding rectangle unchanged.
+    func testOrientationMatchesTheTrackTransform() {
+        XCTAssertEqual(OverlayVideoExporter.orientation(for: .identity), .up)
+
+        XCTAssertEqual(
+            OverlayVideoExporter.orientation(for: CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 0, ty: 0)),
+            .right,
+            "portrait, rotated 90 degrees clockwise"
         )
-        let output = OverlayVideoExporter.outputSize(for: upright)
-
-        let transform = OverlayVideoExporter.renderTransform(
-            naturalSize: natural, transform: rotation, outputSize: output
+        XCTAssertEqual(
+            OverlayVideoExporter.orientation(for: CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 0)),
+            .left,
+            "portrait the other way"
         )
-        let mapped = CGRect(origin: .zero, size: natural).applying(transform)
-
-        XCTAssertEqual(mapped.minX, 0, accuracy: 0.5, "rotation must not push the frame off-origin")
-        XCTAssertEqual(mapped.minY, 0, accuracy: 0.5)
-        XCTAssertEqual(mapped.width, output.width, accuracy: 1, "must fill, not stretch or letterbox")
-        XCTAssertEqual(mapped.height, output.height, accuracy: 1)
+        XCTAssertEqual(
+            OverlayVideoExporter.orientation(for: CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: 0, ty: 0)),
+            .down,
+            "rotated 180 degrees"
+        )
     }
 
-    func testUprightSourceIsScaledWithoutBeingMoved() {
-        let natural = CGSize(width: 1920, height: 1080)
-        let output = OverlayVideoExporter.outputSize(for: natural)
+    /// The transforms AVFoundation actually produces carry translations; only a/b/c/d decide the
+    /// orientation.
+    func testOrientationIgnoresTranslation() {
+        let withTranslation = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 1080, ty: 0)
+        XCTAssertEqual(OverlayVideoExporter.orientation(for: withTranslation), .right)
+    }
 
-        let transform = OverlayVideoExporter.renderTransform(
-            naturalSize: natural, transform: .identity, outputSize: output
+    func testUnrecognisedTransformFallsBackToUpright() {
+        // A scale-only transform is not a rotation; treat it as upright rather than guessing.
+        XCTAssertEqual(
+            OverlayVideoExporter.orientation(for: CGAffineTransform(scaleX: 2, y: 2)),
+            .up
         )
-        let mapped = CGRect(origin: .zero, size: natural).applying(transform)
+    }
 
-        XCTAssertEqual(mapped.minX, 0, accuracy: 0.5)
-        XCTAssertEqual(mapped.minY, 0, accuracy: 0.5)
-        XCTAssertEqual(mapped.width, output.width, accuracy: 1)
-        XCTAssertEqual(mapped.height, output.height, accuracy: 1)
+    /// A quarter turn built from an angle carries float error — `a` comes out as 6e-17 rather
+    /// than 0 — so matching the matrix exactly would silently report "upright" and misorient the
+    /// export.
+    func testOrientationToleratesFloatingPointError() {
+        XCTAssertEqual(
+            OverlayVideoExporter.orientation(for: CGAffineTransform(rotationAngle: .pi / 2)),
+            .right
+        )
+        XCTAssertEqual(
+            OverlayVideoExporter.orientation(for: CGAffineTransform(rotationAngle: -.pi / 2)),
+            .left
+        )
+        XCTAssertEqual(
+            OverlayVideoExporter.orientation(for: CGAffineTransform(rotationAngle: .pi)),
+            .down
+        )
     }
 }
