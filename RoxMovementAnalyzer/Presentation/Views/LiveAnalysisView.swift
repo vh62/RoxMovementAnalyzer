@@ -1,9 +1,15 @@
 import AVFoundation
+import CoreVideo
 import SwiftUI
 
 struct LiveAnalysisView: View {
     @Environment(SessionExportService.self) private var exportService
     @State private var viewModel: LiveAnalysisViewModel
+
+    #if DEBUG
+    /// Latest frame from the debug video-file source, shown in place of the camera preview.
+    @State private var debugFrame: CVPixelBuffer?
+    #endif
 
     @MainActor
     init(viewModel: LiveAnalysisViewModel) {
@@ -17,7 +23,7 @@ struct LiveAnalysisView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            CameraPreviewView(session: viewModel.cameraService.session)
+            preview
                 .ignoresSafeArea()
                 .overlay {
                     PoseOverlayView(
@@ -50,7 +56,14 @@ struct LiveAnalysisView: View {
         .navigationTitle(viewModel.selectedStation.rawValue)
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            #if DEBUG
+            // Hook up the file source before preparing, so nothing is missed once it starts.
+            configureDebugVideoSource()
+            #endif
             await viewModel.prepareCamera()
+            #if DEBUG
+            startDebugVideoIfNeeded()
+            #endif
         }
         .onDisappear {
             viewModel.stopSession()
@@ -82,6 +95,46 @@ struct LiveAnalysisView: View {
                 )
             }
         }
+    }
+
+    #if DEBUG
+    private var debugVideoSource: VideoFileCaptureService? {
+        viewModel.cameraService as? VideoFileCaptureService
+    }
+
+    /// Mirrors the decoded frames into the preview and stops the "recording" at end of clip, so a
+    /// picked video runs start to finish and lands on the scorecard without any tapping.
+    private func configureDebugVideoSource() {
+        guard let source = debugVideoSource else { return }
+
+        source.previewFrameHandler = { buffer in
+            debugFrame = buffer
+        }
+        source.feedFinishedHandler = {
+            guard viewModel.recordingState == .recording else { return }
+            viewModel.toggleRecording()
+        }
+    }
+
+    private func startDebugVideoIfNeeded() {
+        guard debugVideoSource != nil, viewModel.recordingState == .ready else { return }
+        viewModel.toggleRecording()
+    }
+    #endif
+
+    /// A file-backed debug source has no capture session, so it shows the decoded frames instead
+    /// of a preview layer.
+    @ViewBuilder
+    private var preview: some View {
+        #if DEBUG
+        if viewModel.cameraService is VideoFileCaptureService {
+            DecodedFramePreview(pixelBuffer: debugFrame)
+        } else {
+            CameraPreviewView(session: viewModel.cameraService.session)
+        }
+        #else
+        CameraPreviewView(session: viewModel.cameraService.session)
+        #endif
     }
 
     private var topOverlay: some View {

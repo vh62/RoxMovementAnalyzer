@@ -11,6 +11,9 @@ struct TrainingHubView: View {
                     liveAnalysisCard
                     movementSelector
                     recentReviewCard
+                    #if DEBUG
+                    debugVideoSourceCard
+                    #endif
                 }
                 .padding(20)
             }
@@ -19,6 +22,36 @@ struct TrainingHubView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
     }
+
+    #if DEBUG
+    /// Development only — analyse an existing video instead of standing in front of the camera.
+    private var debugVideoSourceCard: some View {
+        NavigationLink {
+            DebugVideoSourceView(station: selectedStation)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "ladybug.fill")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.muted)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Analyse a video (debug)")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("Run a saved clip through the pipeline")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
+
+                Spacer()
+            }
+            .padding(14)
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+    #endif
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
