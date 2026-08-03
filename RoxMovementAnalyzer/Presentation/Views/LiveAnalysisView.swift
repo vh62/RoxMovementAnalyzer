@@ -252,18 +252,22 @@ struct LiveAnalysisView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    /// The framing prompt and the cue card must never say the same thing at once.
+    /// The cue card earns its place on screen or it does not appear.
     ///
-    /// While the prompt is up, the prompt is the better signal — it reflects what is actually
-    /// being tracked — so the card stands down and leaves the frame clear. It still appears for
-    /// anything the prompt cannot convey: a fault to correct, or a failure to report.
+    /// Anything needing attention — a fault to correct, a failure to report — always shows.
+    /// Otherwise it stays out of the way: while waiting to start there is nothing to say that the
+    /// record button does not already say, and while the framing prompt is up that prompt is the
+    /// better signal, since it reflects what is actually being tracked.
     private var showsCueCard: Bool {
-        guard showsBodyPrompt else { return true }
-
         switch viewModel.currentCue.status {
-        case .caution, .needsWork: return true
-        case .strong, .raceReady: return false
+        case .caution, .needsWork:
+            return true
+        case .strong, .raceReady:
+            break
         }
+
+        if viewModel.recordingState == .ready { return false }
+        return !showsBodyPrompt
     }
 
     /// Detail is hidden while the camera is live so the frame stays clear.
