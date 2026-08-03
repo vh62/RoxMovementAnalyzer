@@ -33,8 +33,11 @@ struct LiveAnalysisView: View {
                     )
                     .ignoresSafeArea()
                 }
-                .overlay {
+                .overlay(alignment: .top) {
+                    // Sits in the upper area, clear of both the status pills and the rep badge,
+                    // so the lower half of the frame — legs and feet — stays unobstructed.
                     poseDetectionOverlay
+                        .padding(.top, 150)
                 }
                 .overlay(alignment: .top) {
                     topOverlay
@@ -217,26 +220,42 @@ struct LiveAnalysisView: View {
         }
     }
 
+    /// Kept deliberately low and see-through: it sits over the bottom of the frame, which is
+    /// exactly where the athlete's legs and feet are, and confirming those are in shot is the
+    /// whole job of the framing cue. A translucent fill shows the body through it, where a
+    /// frosted material would blur precisely what needs checking.
     private var cueCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Image(systemName: viewModel.currentCue.status.symbolName)
                     .foregroundStyle(viewModel.currentCue.status.color)
                 Text(viewModel.currentCue.message)
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(AppTheme.ink)
+                    .font(.subheadline.weight(.black))
+                    .foregroundStyle(.white)
             }
 
-            Text(viewModel.currentCue.detail)
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            // The supporting line is unreadable from where the athlete stands anyway, so it only
+            // appears when the camera is not live — errors, and the wrap-up after a set.
+            if showsCueDetail {
+                Text(viewModel.currentCue.detail)
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(16)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(.black.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: .black.opacity(0.2), radius: 18, y: 8)
+    }
+
+    /// Detail is hidden while the camera is live so the frame stays clear.
+    private var showsCueDetail: Bool {
+        switch viewModel.recordingState {
+        case .ready, .recording: false
+        case .idle, .preparing, .processing, .completed, .failed: true
+        }
     }
 
     @ViewBuilder
@@ -276,24 +295,19 @@ struct LiveAnalysisView: View {
     }
 
     @ViewBuilder
+    /// A slim pill rather than a card: this shows while the athlete is still positioning
+    /// themselves, so it must not cover the body they are trying to fit in shot. The explanation
+    /// it used to carry could not be read from that distance anyway.
+    @ViewBuilder
     private var poseDetectionOverlay: some View {
         if showsBodyPrompt {
-            VStack(spacing: 8) {
-                Image(systemName: "figure.stand")
-                    .font(.title2.weight(.bold))
-                Text("Looking for full body")
-                    .font(.headline.weight(.black))
-                Text("Step back so your shoulders, hips, knees, and ankles are all in frame. The skeleton appears once your whole body is visible.")
-                    .font(.caption.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .foregroundStyle(.white)
-            .padding(16)
-            .frame(maxWidth: 280)
-            .background(.black.opacity(0.62))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, 20)
+            Label("Step back — full body not in frame", systemImage: "figure.stand")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(.black.opacity(0.55))
+                .clipShape(Capsule())
         }
     }
 
