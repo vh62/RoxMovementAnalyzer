@@ -26,6 +26,8 @@ enum CameraPosition: Equatable {
 
 protocol CameraCaptureServicing: AnyObject {
     var session: AVCaptureSession { get }
+    /// Longest a single set may record before it stops itself.
+    var maximumRecordingDuration: TimeInterval { get }
     var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)? { get set }
     /// Called on the main actor once the movie file has finished writing, which happens some
     /// time after `stopRecording()` returns.
@@ -73,6 +75,16 @@ enum CameraCaptureError: LocalizedError {
 
 final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
     private static let log = Logger(subsystem: "rox.camera", category: "CaptureService")
+
+    /// Comfortably covers a full HYROX wall-ball station — 100 reps, typically four to nine
+    /// minutes — while keeping the movie file around half a gigabyte and the pose data the
+    /// analysis holds in memory to roughly 18 MB.
+    static let maximumRecordingDuration: TimeInterval = 300
+
+    /// Stop while there is still room to finalise the file rather than failing mid-write.
+    private static let minimumFreeDiskSpace: Int64 = 250 * 1024 * 1024
+
+    var maximumRecordingDuration: TimeInterval { Self.maximumRecordingDuration }
 
     let session = AVCaptureSession()
     var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)?
@@ -126,6 +138,15 @@ final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
 
         guard session.canAddOutput(movieOutput) else { throw CameraCaptureError.cannotAddMovieOutput }
         session.addOutput(movieOutput)
+
+        // Let AVFoundation enforce the limits: it stops and finalises a valid file on its own,
+        // where a hand-rolled timer risks losing the recording. Both cases report the stop with
+        // AVErrorRecordingSuccessfullyFinishedKey, which the finish delegate already treats as
+        // success.
+        movieOutput.maxRecordedDuration = CMTime(
+            seconds: Self.maximumRecordingDuration, preferredTimescale: 600
+        )
+        movieOutput.minFreeDiskSpaceLimit = Self.minimumFreeDiskSpace
 
         videoOutput.alwaysDiscardsLateVideoFrames = true
         // MediaPipe's MPImage(sampleBuffer:) requires 32BGRA; the capture default is YUV, which fails.

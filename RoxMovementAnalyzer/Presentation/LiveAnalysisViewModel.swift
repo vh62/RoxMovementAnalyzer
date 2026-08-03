@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 
 @MainActor
 @Observable
@@ -57,6 +58,14 @@ final class LiveAnalysisViewModel {
 
     /// How long a fault cue stays on screen before the standing cue returns.
     private static let faultCueDuration: TimeInterval = 2.5
+
+    /// Backstop on the pose buffer — roughly 5.5 minutes at 60 fps, comfortably clear of the
+    /// capture service's duration cap.
+    private static let maximumCapturedFrames = 20_000
+
+    private static let log = Logger(subsystem: "rox.analysis", category: "LiveAnalysisViewModel")
+
+    private var hasLoggedFrameLimit = false
 
     init(
         selectedStation: HyroxStation = .wallBalls,
@@ -163,6 +172,7 @@ final class LiveAnalysisViewModel {
             try cameraService.startRecording()
             capturedFrames.removeAll(keepingCapacity: true)
             liveRepAnalyzer = WallBallRepAnalyzer()
+            hasLoggedFrameLimit = false
             liveRepCount = 0
             latestRep = nil
             cueHoldUntil = nil
@@ -178,14 +188,22 @@ final class LiveAnalysisViewModel {
 
     private func stopRecording() {
         cameraService.stopRecording()
-        sessionScorecard = sessionAnalyzer.analyze(station: selectedStation, frames: capturedFrames)
-        sessionTimeline = SessionTimeline(frames: capturedFrames, station: selectedStation)
-        currentCue = feedbackGenerator.completedCue(for: selectedStation)
+        finalizeAnalysis()
 
         // The movie file keeps writing after stopRecording() returns; wait for the delegate
         // rather than navigating to a video that does not exist yet.
         recordingState = .processing
         startRecordingFinishTimeout()
+    }
+
+    /// Turns the captured frames into the scorecard and replay timeline.
+    ///
+    /// Shared by the user tapping stop and by a recording that stopped itself at the duration or
+    /// storage limit, so the set is analysed identically either way.
+    private func finalizeAnalysis() {
+        sessionScorecard = sessionAnalyzer.analyze(station: selectedStation, frames: capturedFrames)
+        sessionTimeline = SessionTimeline(frames: capturedFrames, station: selectedStation)
+        currentCue = feedbackGenerator.completedCue(for: selectedStation)
     }
 
     /// Falls through to the scorecard if the capture delegate never reports back, so a stalled
@@ -209,6 +227,16 @@ final class LiveAnalysisViewModel {
         case .failure:
             // Analysis still stands without the video; only the replay is unavailable.
             sessionVideoURL = nil
+        }
+
+        // Still recording means AVFoundation stopped this itself, at the duration cap or the
+        // storage floor. The analysis has not run yet — without this the app would sit on
+        // "Recording" forever with no scorecard.
+        if recordingState == .recording {
+            cameraService.stopRecording()
+            finalizeAnalysis()
+            finishSession()
+            return
         }
 
         guard recordingState == .processing else { return }
@@ -262,6 +290,19 @@ final class LiveAnalysisViewModel {
         latestPoseFrame = poseFrame
 
         guard recordingState == .recording else { return }
+
+        // The duration cap should stop things long before this, but the debug video-file source
+        // has no movie output and therefore no limit. Stop growing rather than doing it silently.
+        guard capturedFrames.count < Self.maximumCapturedFrames else {
+            if !hasLoggedFrameLimit {
+                hasLoggedFrameLimit = true
+                Self.log.error(
+                    "hit the captured-frame ceiling; analysis covers the first \(Self.maximumCapturedFrames, privacy: .public) frames only"
+                )
+            }
+            return
+        }
+
         capturedFrames.append(poseFrame)
 
         if selectedStation == .wallBalls {

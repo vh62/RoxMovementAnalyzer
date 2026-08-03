@@ -55,6 +55,12 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
     let activeCameraPosition: CameraPosition = .back
     var authorizationState: CameraAuthorizationState { .authorized }
 
+    /// The clip runs to its own end rather than being cut short, so the cap is only nominal here.
+    /// The view model's frame ceiling is what actually bounds a very long picked video.
+    var maximumRecordingDuration: TimeInterval {
+        AVFoundationCameraCaptureService.maximumRecordingDuration
+    }
+
     private var feedTask: Task<Void, Never>?
     private var baseTimestampMilliseconds = 0
 
