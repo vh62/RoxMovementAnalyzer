@@ -40,11 +40,13 @@ extension LiveFeedbackGenerating {
 }
 
 struct StationRuleLiveFeedbackGenerator: LiveFeedbackGenerating {
+    /// Deliberately says nothing about framing: the on-screen prompt owns that, and it knows
+    /// whether the body is actually tracked rather than repeating a standing instruction.
     func readyCue(for station: HyroxStation) -> LiveFeedbackCue {
         LiveFeedbackCue(
             station: station,
-            message: "Frame the full body",
-            detail: "Keep feet, hips, shoulders, and hands visible before starting analysis.",
+            message: "Ready when you are",
+            detail: "Tap record to start the set.",
             status: .raceReady
         )
     }

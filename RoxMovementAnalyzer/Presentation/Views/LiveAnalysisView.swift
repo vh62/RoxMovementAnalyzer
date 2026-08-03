@@ -50,7 +50,9 @@ struct LiveAnalysisView: View {
                 }
 
             VStack(spacing: 12) {
-                cueCard
+                if showsCueCard {
+                    cueCard
+                }
                 controls
             }
             .padding(16)
@@ -248,6 +250,20 @@ struct LiveAnalysisView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.black.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// The framing prompt and the cue card must never say the same thing at once.
+    ///
+    /// While the prompt is up, the prompt is the better signal — it reflects what is actually
+    /// being tracked — so the card stands down and leaves the frame clear. It still appears for
+    /// anything the prompt cannot convey: a fault to correct, or a failure to report.
+    private var showsCueCard: Bool {
+        guard showsBodyPrompt else { return true }
+
+        switch viewModel.currentCue.status {
+        case .caution, .needsWork: return true
+        case .strong, .raceReady: return false
+        }
     }
 
     /// Detail is hidden while the camera is live so the frame stays clear.
