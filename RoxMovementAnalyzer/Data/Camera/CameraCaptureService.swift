@@ -179,10 +179,13 @@ final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
             } else {
                 // Previously skipped silently, which is how a landscape recording could come out
                 // of a portrait-framed session with nothing reported anywhere.
-                Self.log.error(
-                    "\(label, privacy: .public) output cannot rotate to portrait; "
-                        + "recording will stay in sensor orientation"
-                )
+                //
+                // One literal rather than concatenation: a log message is an OSLogMessage, not a
+                // String, so `+` does not apply to it.
+                Self.log.error("""
+                    \(label, privacy: .public) output cannot rotate to portrait; \
+                    recording will stay in sensor orientation
+                    """)
             }
 
             if connection.isVideoMirroringSupported {
@@ -196,10 +199,10 @@ final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
     private func logConnectionOrientation() {
         let video = videoOutput.connection(with: .video)?.videoRotationAngle ?? -1
         let movie = movieOutput.connection(with: .video)?.videoRotationAngle ?? -1
-        Self.log.info(
-            "recording with rotation — video output: \(video, privacy: .public)°, "
-                + "movie output: \(movie, privacy: .public)°"
-        )
+        Self.log.info("""
+            recording with rotation — video output: \(video, privacy: .public)°, \
+            movie output: \(movie, privacy: .public)°
+            """)
     }
 
     func startSession() {

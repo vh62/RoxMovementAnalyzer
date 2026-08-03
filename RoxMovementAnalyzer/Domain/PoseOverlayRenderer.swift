@@ -216,11 +216,14 @@ struct PoseOverlayRenderer {
         let font = CTFontCreateUIFontForLanguage(.system, fontSize, nil)
             ?? CTFontCreateWithName("Helvetica-Bold" as CFString, fontSize, nil)
 
+        // CoreText's own attribute names rather than the UIKit/AppKit ones: this file draws with
+        // CTLine and imports neither, and `.font`/`.foregroundColor` are declared by those UI
+        // frameworks. These keys are what CTLineCreateWithAttributedString reads anyway.
         let attributed = NSAttributedString(
             string: string,
             attributes: [
-                .font: font,
-                .foregroundColor: color
+                NSAttributedString.Key(kCTFontAttributeName as String): font,
+                NSAttributedString.Key(kCTForegroundColorAttributeName as String): color
             ]
         )
 
