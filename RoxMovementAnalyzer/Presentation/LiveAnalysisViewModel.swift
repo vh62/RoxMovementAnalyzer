@@ -53,6 +53,7 @@ final class LiveAnalysisViewModel {
     private let poseEstimator: PoseEstimating?
     private var capturedFrames: [PoseFrame] = []
     private var liveRepAnalyzer = WallBallRepAnalyzer()
+    private let audioCoach = SessionAudioCoach()
     private var recordingFinishTask: Task<Void, Never>?
     private var cueHoldUntil: Date?
 
@@ -127,6 +128,8 @@ final class LiveAnalysisViewModel {
 
     func stopSession() {
         cameraService.stopSession()
+        // Leaving the screen mid-set must not leave the session ducking the athlete's music.
+        audioCoach.endSession()
     }
 
     /// Restarts the camera after a finished set released it.
@@ -173,6 +176,7 @@ final class LiveAnalysisViewModel {
             capturedFrames.removeAll(keepingCapacity: true)
             liveRepAnalyzer = WallBallRepAnalyzer()
             hasLoggedFrameLimit = false
+            audioCoach.startSession()
             liveRepCount = 0
             latestRep = nil
             cueHoldUntil = nil
@@ -252,6 +256,7 @@ final class LiveAnalysisViewModel {
         // asset writer — enough concurrent pipelines to take mediaserverd down, which surfaces
         // as the export failing with a generic "cannot complete action".
         cameraService.stopSession()
+        audioCoach.endSession()
 
         if canReviewVideo {
             showsPlayback = true
@@ -307,8 +312,15 @@ final class LiveAnalysisViewModel {
 
         if selectedStation == .wallBalls {
             let previousRepCount = liveRepAnalyzer.completedReps.count
+            let previousValidReps = liveRepAnalyzer.validRepsSoFar
             liveRepAnalyzer.process(poseFrame)
             liveRepCount = liveRepAnalyzer.validRepsSoFar
+
+            // Counted the instant the hips break parallel, which is when a judge would call it —
+            // about a second before the rep record closes at the catch.
+            if liveRepAnalyzer.validRepsSoFar > previousValidReps {
+                audioCoach.announce(rep: liveRepAnalyzer.validRepsSoFar)
+            }
 
             if liveRepAnalyzer.completedReps.count > previousRepCount,
                let rep = liveRepAnalyzer.completedReps.last {
@@ -323,6 +335,13 @@ final class LiveAnalysisViewModel {
     /// returns.
     private func handleCompletedRep(_ rep: WallBallRep) {
         latestRep = rep
+
+        // A shallow rep cannot be known until the athlete starts back up, so this lands at rep
+        // completion rather than at the bottom. It never collides with the count: a rep either
+        // broke parallel and was counted, or it did not and is called here.
+        if !rep.reachedDepth {
+            audioCoach.announceNoRep()
+        }
 
         if let fault = rep.faults.first {
             currentCue = feedbackGenerator.faultCue(for: fault, station: selectedStation)

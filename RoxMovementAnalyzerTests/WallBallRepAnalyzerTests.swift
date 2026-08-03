@@ -151,6 +151,42 @@ final class WallBallRepAnalyzerTests: XCTestCase {
         XCTAssertEqual(mixed.attempts, 5)
     }
 
+    // MARK: - Squat depth
+
+    /// Depth is the rule that voids a rep, not an efficiency note, which is why it is a fault and
+    /// why it is the one thing spoken aloud during a set.
+    func testShallowRepRaisesTheDepthFault() throws {
+        let frames = rep(startMs: 0, bottomDelta: -0.04).frames
+        let record = try XCTUnwrap(WallBallRepAnalyzer.analyze(frames: frames).first)
+
+        XCTAssertFalse(record.reachedDepth)
+        XCTAssertTrue(record.hasFault(.shallowDepth))
+
+        guard case .shallowDepth(let shortfall)? = record.faults.first else {
+            return XCTFail("depth should be the first fault")
+        }
+        XCTAssertGreaterThan(shortfall, 0, "shortfall says how far short, not how deep")
+    }
+
+    func testRepBreakingParallelRaisesNoDepthFault() throws {
+        let frames = rep(startMs: 0, bottomDelta: 0.05).frames
+        let record = try XCTUnwrap(WallBallRepAnalyzer.analyze(frames: frames).first)
+
+        XCTAssertTrue(record.reachedDepth)
+        XCTAssertFalse(record.hasFault(.shallowDepth))
+    }
+
+    /// A rep can be both shallow and mistimed. Depth must win, because it is what decides whether
+    /// the rep counts — and `faults.first` is what the athlete is told.
+    func testDepthOutranksATimingFault() throws {
+        let frames = rep(startMs: 0, bottomDelta: -0.04, armLeadFrames: -6).frames
+        let record = try XCTUnwrap(WallBallRepAnalyzer.analyze(frames: frames).first)
+
+        XCTAssertTrue(record.hasFault(.shallowDepth))
+        XCTAssertTrue(record.hasFault(.earlyRelease))
+        XCTAssertEqual(record.faults.first?.kind, .shallowDepth)
+    }
+
     // MARK: - Release timing
 
     func testCleanRepIsNotFlagged() throws {

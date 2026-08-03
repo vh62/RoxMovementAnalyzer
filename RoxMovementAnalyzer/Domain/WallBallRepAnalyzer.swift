@@ -196,6 +196,15 @@ struct WallBallRepAnalyzer {
 
         var faults: [WallBallFault] = []
 
+        // Depth goes first deliberately. It is the rule that voids the rep rather than an
+        // inefficiency, so when a rep is both shallow and mistimed this is what `faults.first`
+        // surfaces to the athlete.
+        if !rep.reachedDepth {
+            faults.append(
+                .shallowDepth(shortfall: (thresholds.validDepthDelta - rep.deepestDelta) * 100)
+            )
+        }
+
         if let releaseOffset {
             if releaseOffset < thresholds.earlyReleaseOffset {
                 faults.append(.earlyRelease(offset: releaseOffset))

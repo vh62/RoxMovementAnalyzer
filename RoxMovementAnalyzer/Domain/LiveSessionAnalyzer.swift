@@ -108,20 +108,9 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
 
         metrics.append(contentsOf: efficiencyMetrics(for: reps))
 
-        var alerts: [RedFlagAlert] = []
-        if depthMisses > 0 {
-            alerts.append(
-                RedFlagAlert(
-                    station: .wallBalls,
-                    title: "Squat depth misses",
-                    message: "\(depthMisses) of \(result.attempts) squats did not reach hip-below-knee depth. Sink the hips lower before the throw.",
-                    severity: accuracy < 0.6 ? .high : .medium,
-                    timestamp: reps.first { !$0.reachedDepth }?.bottomSeconds
-                )
-            )
-        }
-
-        alerts.append(contentsOf: efficiencyAlerts(for: reps))
+        // Depth used to need its own alert here. It is a fault now, so efficiencyAlerts covers it
+        // along with the rest — reporting it twice would just say the same thing in two places.
+        let alerts = efficiencyAlerts(for: reps)
 
         return StationScore(
             station: .wallBalls,
