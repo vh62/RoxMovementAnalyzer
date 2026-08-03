@@ -310,7 +310,6 @@ struct LiveAnalysisView: View {
         return viewModel.requiresFullBody && !frame.hasFullBody
     }
 
-    @ViewBuilder
     /// A slim pill rather than a card: this shows while the athlete is still positioning
     /// themselves, so it must not cover the body they are trying to fit in shot. The explanation
     /// it used to carry could not be read from that distance anyway.
