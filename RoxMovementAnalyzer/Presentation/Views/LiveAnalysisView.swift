@@ -29,7 +29,8 @@ struct LiveAnalysisView: View {
                     PoseOverlayView(
                         poseFrame: viewModel.latestPoseFrame,
                         showsDepthGuide: viewModel.showsLiveRepCount,
-                        requiresFullBody: viewModel.requiresFullBody
+                        requiresFullBody: viewModel.requiresFullBody,
+                        scalingMode: overlayScalingMode
                     )
                     .ignoresSafeArea()
                 }
@@ -81,6 +82,9 @@ struct LiveAnalysisView: View {
         .onChange(of: viewModel.sessionVideoURL) { _, url in
             // Burn the overlay in as soon as the recording lands. The service is app-scoped, so
             // this keeps running while the athlete reviews their scorecard or leaves the screen.
+            #if DEBUG
+            guard debugVideoSource == nil else { return }
+            #endif
             guard let url, let timeline = viewModel.sessionTimeline else { return }
             exportService.start(
                 sourceURL: url,
@@ -112,6 +116,10 @@ struct LiveAnalysisView: View {
         viewModel.cameraService as? VideoFileCaptureService
     }
 
+    private var overlayScalingMode: PoseOverlayGeometry.ScalingMode {
+        debugVideoSource == nil ? .aspectFill : .aspectFit
+    }
+
     /// Mirrors the decoded frames into the preview and stops the "recording" at end of clip, so a
     /// picked video runs start to finish and lands on the scorecard without any tapping.
     private func configureDebugVideoSource() {
@@ -130,6 +138,10 @@ struct LiveAnalysisView: View {
         guard debugVideoSource != nil, viewModel.recordingState == .ready else { return }
         viewModel.toggleRecording()
     }
+    #endif
+
+    #if !DEBUG
+    private var overlayScalingMode: PoseOverlayGeometry.ScalingMode { .aspectFill }
     #endif
 
     /// A file-backed debug source has no capture session, so it shows the decoded frames instead
@@ -426,6 +438,7 @@ struct PoseOverlayView: View {
     var showsDepthGuide = false
     /// When true, the skeleton is only drawn if the whole body is tracked (see PoseFrame.hasFullBody).
     var requiresFullBody = false
+    var scalingMode: PoseOverlayGeometry.ScalingMode = .aspectFill
 
 
     var body: some View {
@@ -442,10 +455,10 @@ struct PoseOverlayView: View {
                 ForEach(angleLabels(for: poseFrame, in: proxy.size)) { label in
                     Text(label.text)
                         .font(.caption2.weight(.black))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(.white.opacity(0.86))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 4)
-                        .background(.yellow)
+                        .background(.black.opacity(0.42))
                         .clipShape(RoundedRectangle(cornerRadius: 5))
                         .position(label.position)
                         .accessibilityLabel(label.accessibilityLabel)
@@ -464,15 +477,21 @@ struct PoseOverlayView: View {
             forNormalizedX: 0.5,
             y: guide.kneeLevel,
             in: size,
-            sourceAspectRatio: poseFrame.sourceAspectRatio
+            sourceAspectRatio: poseFrame.sourceAspectRatio,
+            scalingMode: scalingMode
         ).y
+        let mediaRect = PoseOverlayGeometry.mediaRect(
+            in: size,
+            sourceAspectRatio: poseFrame.sourceAspectRatio,
+            scalingMode: scalingMode
+        )
 
         let hipsBelow = guide.hasReachedDepth
         let guideColor: Color = hipsBelow ? .green : .white
 
         var line = Path()
-        line.move(to: CGPoint(x: 0, y: kneeY))
-        line.addLine(to: CGPoint(x: size.width, y: kneeY))
+        line.move(to: CGPoint(x: mediaRect.minX, y: kneeY))
+        line.addLine(to: CGPoint(x: mediaRect.maxX, y: kneeY))
         context.stroke(line, with: .color(.black.opacity(0.5)), style: StrokeStyle(lineWidth: 5, dash: [12, 7]))
         context.stroke(line, with: .color(guideColor), style: StrokeStyle(lineWidth: 3, dash: [12, 7]))
 
@@ -481,7 +500,7 @@ struct PoseOverlayView: View {
                 .font(.caption2.weight(.black))
         )
         label.shading = .color(guideColor)
-        context.draw(label, at: CGPoint(x: size.width / 2, y: max(kneeY - 14, 12)))
+        context.draw(label, at: CGPoint(x: mediaRect.midX, y: max(kneeY - 14, 12)))
     }
 
     private func drawConnections(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
@@ -491,8 +510,8 @@ struct PoseOverlayView: View {
             var path = Path()
             path.move(to: point(for: start, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio))
             path.addLine(to: point(for: end, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio))
-            context.stroke(path, with: .color(.yellow), lineWidth: 4)
-            context.stroke(path, with: .color(.black.opacity(0.72)), lineWidth: 1.5)
+            context.stroke(path, with: .color(.black.opacity(0.28)), lineWidth: 3)
+            context.stroke(path, with: .color(.cyan.opacity(0.34)), lineWidth: 2)
         }
     }
 
@@ -500,9 +519,9 @@ struct PoseOverlayView: View {
         for landmark in poseFrame.landmarks {
             guard landmark.isVisible else { continue }
             let position = point(for: landmark, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio)
-            let rect = CGRect(x: position.x - 4, y: position.y - 4, width: 8, height: 8)
-            context.fill(Path(ellipseIn: rect), with: .color(.red))
-            context.stroke(Path(ellipseIn: rect), with: .color(.white), lineWidth: 1.5)
+            let rect = CGRect(x: position.x - 2.5, y: position.y - 2.5, width: 5, height: 5)
+            context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.48)))
+            context.stroke(Path(ellipseIn: rect), with: .color(.cyan.opacity(0.38)), lineWidth: 1)
         }
     }
 
@@ -549,7 +568,12 @@ struct PoseOverlayView: View {
     }
 
     private func point(for landmark: PoseLandmark, in size: CGSize, sourceAspectRatio: Double) -> CGPoint {
-        PoseOverlayGeometry.point(for: landmark, in: size, sourceAspectRatio: sourceAspectRatio)
+        PoseOverlayGeometry.point(
+            for: landmark,
+            in: size,
+            sourceAspectRatio: sourceAspectRatio,
+            scalingMode: scalingMode
+        )
     }
 }
 

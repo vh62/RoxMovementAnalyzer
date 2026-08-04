@@ -69,6 +69,37 @@ final class SessionTimelineTests: XCTestCase {
         XCTAssertEqual(WallBallRepCounter().evaluate(frames: frames).validReps, 1)
     }
 
+    func testClipStartingAtDepthStillCountsTheRep() {
+        let frames = [
+            makeFrame(ms: 0, hipY: 0.63, kneeY: 0.6),
+            makeFrame(ms: 33, hipY: 0.62, kneeY: 0.6),
+            makeFrame(ms: 66, hipY: 0.55, kneeY: 0.6),
+            makeFrame(ms: 99, hipY: 0.44, kneeY: 0.6)
+        ]
+
+        let result = WallBallRepCounter().evaluate(frames: frames)
+
+        XCTAssertEqual(result.validReps, 1)
+        XCTAssertEqual(result.attempts, 1)
+    }
+
+    func testCountsNextRepAfterRisingOutOfDescentWithoutStrictStandingReset() {
+        let kneeY = 0.6
+        let frames = [
+            makeFrame(ms: 0, hipY: kneeY - 0.20, kneeY: kneeY),
+            makeFrame(ms: 33, hipY: kneeY - 0.03, kneeY: kneeY),
+            makeFrame(ms: 66, hipY: kneeY + 0.04, kneeY: kneeY),
+            makeFrame(ms: 99, hipY: kneeY - 0.08, kneeY: kneeY),
+            makeFrame(ms: 132, hipY: kneeY + 0.05, kneeY: kneeY),
+            makeFrame(ms: 165, hipY: kneeY - 0.20, kneeY: kneeY)
+        ]
+
+        let result = WallBallRepCounter().evaluate(frames: frames)
+
+        XCTAssertEqual(result.validReps, 2)
+        XCTAssertEqual(result.attempts, 2)
+    }
+
     func testUntrackedJointsDoNotRegisterMovement() {
         let frames = squatCycle(startMs: 0, bottomDelta: 0.05).map { frame in
             PoseFrame(
@@ -193,5 +224,51 @@ final class SessionTimelineTests: XCTestCase {
 
         XCTAssertEqual(point.x, 200, accuracy: 0.001)
         XCTAssertEqual(point.y, 400, accuracy: 0.001)
+    }
+
+    func testAspectFillCropsWideDebugVideoInPortraitContainer() {
+        let leftEdge = PoseOverlayGeometry.point(
+            forNormalizedX: 0,
+            y: 0.5,
+            in: CGSize(width: 400, height: 800),
+            sourceAspectRatio: 16.0 / 9.0,
+            scalingMode: .aspectFill
+        )
+
+        XCTAssertLessThan(leftEdge.x, 0)
+    }
+
+    func testAspectFitKeepsWideDebugVideoInsidePortraitContainer() {
+        let leftEdge = PoseOverlayGeometry.point(
+            forNormalizedX: 0,
+            y: 0.5,
+            in: CGSize(width: 400, height: 800),
+            sourceAspectRatio: 16.0 / 9.0,
+            scalingMode: .aspectFit
+        )
+
+        let rightEdge = PoseOverlayGeometry.point(
+            forNormalizedX: 1,
+            y: 0.5,
+            in: CGSize(width: 400, height: 800),
+            sourceAspectRatio: 16.0 / 9.0,
+            scalingMode: .aspectFit
+        )
+
+        XCTAssertEqual(leftEdge.x, 0, accuracy: 0.001)
+        XCTAssertEqual(rightEdge.x, 400, accuracy: 0.001)
+    }
+
+    func testAspectFitMediaRectMatchesWideDebugVideoBounds() {
+        let rect = PoseOverlayGeometry.mediaRect(
+            in: CGSize(width: 400, height: 800),
+            sourceAspectRatio: 16.0 / 9.0,
+            scalingMode: .aspectFit
+        )
+
+        XCTAssertEqual(rect.minX, 0, accuracy: 0.001)
+        XCTAssertEqual(rect.maxX, 400, accuracy: 0.001)
+        XCTAssertGreaterThan(rect.minY, 0)
+        XCTAssertLessThan(rect.maxY, 800)
     }
 }

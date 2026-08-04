@@ -103,7 +103,7 @@ struct WallBallRepAnalyzer {
             return
         }
 
-        if delta > thresholds.descentDelta {
+        if delta > thresholds.descentDelta || delta >= thresholds.validDepthDelta {
             beginRep(at: seconds, delta: delta)
         }
     }
@@ -129,7 +129,14 @@ struct WallBallRepAnalyzer {
 
     private mutating func beginRep(at seconds: Double, delta: Double) {
         attempts += 1
-        openRep = OpenRep(index: attempts - 1, startSeconds: seconds, deepestDelta: delta, bottomSeconds: seconds)
+        var rep = OpenRep(index: attempts - 1, startSeconds: seconds, deepestDelta: delta, bottomSeconds: seconds)
+
+        if delta >= thresholds.validDepthDelta {
+            rep.reachedDepth = true
+            validRepsSoFar += 1
+        }
+
+        openRep = rep
     }
 
     private mutating func advance(
@@ -171,7 +178,7 @@ struct WallBallRepAnalyzer {
         detectArmDrive(&rep, at: seconds)
         detectRelease(&rep, at: seconds)
 
-        if delta < thresholds.standingDelta, !rep.hasStoodUp {
+        if delta < thresholds.descentDelta, !rep.hasStoodUp {
             rep.hasStoodUp = true
             rep.endSeconds = seconds
         }

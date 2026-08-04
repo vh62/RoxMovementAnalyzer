@@ -7,6 +7,11 @@ import Foundation
 /// into a `CGContext` (burned-in video export). Those use different drawing APIs, but the maths
 /// and the depth rules must stay identical, so they live here.
 enum PoseOverlayGeometry {
+    enum ScalingMode {
+        case aspectFill
+        case aspectFit
+    }
+
     /// Skeleton bones, as pairs of landmarks to connect.
     static let connections: [(PoseLandmarkName, PoseLandmarkName)] = [
         (.leftShoulder, .rightShoulder),
@@ -50,13 +55,16 @@ enum PoseOverlayGeometry {
         forNormalizedX x: Double,
         y: Double,
         in size: CGSize,
-        sourceAspectRatio: Double
+        sourceAspectRatio: Double,
+        scalingMode: ScalingMode = .aspectFill
     ) -> CGPoint {
         let containerAspectRatio = size.width / max(size.height, 1)
         let scaledSize: CGSize
         let offset: CGPoint
 
-        if sourceAspectRatio > containerAspectRatio {
+        let sourceIsWider = sourceAspectRatio > containerAspectRatio
+
+        if scalingMode == .aspectFill && sourceIsWider || scalingMode == .aspectFit && !sourceIsWider {
             scaledSize = CGSize(width: size.height * sourceAspectRatio, height: size.height)
             offset = CGPoint(x: (size.width - scaledSize.width) / 2, y: 0)
         } else {
@@ -70,12 +78,40 @@ enum PoseOverlayGeometry {
         )
     }
 
+    static func mediaRect(
+        in size: CGSize,
+        sourceAspectRatio: Double,
+        scalingMode: ScalingMode = .aspectFill
+    ) -> CGRect {
+        let containerAspectRatio = size.width / max(size.height, 1)
+        let sourceIsWider = sourceAspectRatio > containerAspectRatio
+        let scaledSize: CGSize
+        let offset: CGPoint
+
+        if scalingMode == .aspectFill && sourceIsWider || scalingMode == .aspectFit && !sourceIsWider {
+            scaledSize = CGSize(width: size.height * sourceAspectRatio, height: size.height)
+            offset = CGPoint(x: (size.width - scaledSize.width) / 2, y: 0)
+        } else {
+            scaledSize = CGSize(width: size.width, height: size.width / max(sourceAspectRatio, 0.001))
+            offset = CGPoint(x: 0, y: (size.height - scaledSize.height) / 2)
+        }
+
+        return CGRect(origin: offset, size: scaledSize)
+    }
+
     static func point(
         for landmark: PoseLandmark,
         in size: CGSize,
-        sourceAspectRatio: Double
+        sourceAspectRatio: Double,
+        scalingMode: ScalingMode = .aspectFill
     ) -> CGPoint {
-        point(forNormalizedX: landmark.x, y: landmark.y, in: size, sourceAspectRatio: sourceAspectRatio)
+        point(
+            forNormalizedX: landmark.x,
+            y: landmark.y,
+            in: size,
+            sourceAspectRatio: sourceAspectRatio,
+            scalingMode: scalingMode
+        )
     }
 
     /// Squat-depth state for a frame, used for the knee-height parallel line and the depth callout.

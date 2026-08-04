@@ -10,15 +10,15 @@ import UIKit
 /// a separate player would drift from the frames actually being analysed, and the main reason to
 /// look at this preview is to check the pose overlay lines up with the body.
 ///
-/// Uses `resizeAspectFill` to match `PoseOverlayGeometry.point(for:in:sourceAspectRatio:)`, the
-/// same letterboxing the camera preview and the player layer use.
+/// Uses aspect-fit for picked debug videos so calibration clips are never visually cropped.
+/// `LiveAnalysisView` passes the same fit mode to `PoseOverlayView`, keeping the overlay aligned.
 struct DecodedFramePreview: UIViewRepresentable {
     let pixelBuffer: CVPixelBuffer?
 
     func makeUIView(context: Context) -> FrameView {
         let view = FrameView()
         view.backgroundColor = .black
-        view.contentMode = .scaleAspectFill
+        view.contentMode = .scaleAspectFit
         view.clipsToBounds = true
         return view
     }
@@ -33,7 +33,7 @@ struct DecodedFramePreview: UIViewRepresentable {
 
         override init(frame: CGRect) {
             super.init(frame: frame)
-            imageLayer.contentsGravity = .resizeAspectFill
+            imageLayer.contentsGravity = .resizeAspect
             imageLayer.masksToBounds = true
             layer.addSublayer(imageLayer)
         }

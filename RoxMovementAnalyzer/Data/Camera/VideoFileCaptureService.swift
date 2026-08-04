@@ -135,11 +135,10 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
             let reader = try AVAssetReader(asset: asset)
 
             // A composition output rather than a plain track output: it applies the track's
-            // preferredTransform, so a portrait clip arrives upright. Feeding sideways frames to
-            // the pose model finds nothing at all, since it expects an upright person.
-            let composition = try await AVMutableVideoComposition.videoComposition(
-                withPropertiesOf: asset
-            )
+            // preferredTransform, so a portrait clip arrives upright. The stock composition can
+            // preserve a padded landscape render size for some phone videos; build a tight render
+            // size here so the debug preview and overlay are not shifted into one side of the view.
+            let composition = try await makeUprightComposition(asset: asset, track: track)
             let output = AVAssetReaderVideoCompositionOutput(
                 videoTracks: [track],
                 videoSettings: [
@@ -194,6 +193,39 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
                 self?.recordingFinishedHandler?(.failure(error))
             }
         }
+    }
+
+    private func makeUprightComposition(asset: AVAsset, track: AVAssetTrack) async throws -> AVMutableVideoComposition {
+        let naturalSize = try await track.load(.naturalSize)
+        let preferredTransform = try await track.load(.preferredTransform)
+        let nominalFrameRate = try await track.load(.nominalFrameRate)
+        let duration = try await asset.load(.duration)
+
+        let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+        let renderSize = CGSize(
+            width: abs(transformedRect.width),
+            height: abs(transformedRect.height)
+        )
+
+        var finalTransform = preferredTransform
+        finalTransform.tx -= transformedRect.minX
+        finalTransform.ty -= transformedRect.minY
+
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+        layerInstruction.setTransform(finalTransform, at: .zero)
+
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
+        instruction.layerInstructions = [layerInstruction]
+
+        let composition = AVMutableVideoComposition()
+        composition.renderSize = renderSize
+        composition.frameDuration = CMTime(
+            value: 1,
+            timescale: CMTimeScale(max(nominalFrameRate.rounded(), 1))
+        )
+        composition.instructions = [instruction]
+        return composition
     }
 }
 #endif
