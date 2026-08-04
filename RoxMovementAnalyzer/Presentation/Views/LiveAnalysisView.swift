@@ -4,7 +4,10 @@ import SwiftUI
 
 struct LiveAnalysisView: View {
     @Environment(SessionExportService.self) private var exportService
-    @AppStorage("wallBallAudioCuesEnabled") private var audioCuesEnabled = false
+    @AppStorage(AppSettingsKeys.wallBallAudioCuesEnabled) private var audioCuesEnabled = false
+    @AppStorage(AppSettingsKeys.skeletonOverlayEnabled) private var skeletonOverlayEnabled = false
+    @AppStorage(AppSettingsKeys.angleLabelsEnabled) private var angleLabelsEnabled = false
+    @AppStorage(AppSettingsKeys.depthGuideEnabled) private var depthGuideEnabled = true
     @State private var viewModel: LiveAnalysisViewModel
 
     #if DEBUG
@@ -29,7 +32,9 @@ struct LiveAnalysisView: View {
                 .overlay {
                     PoseOverlayView(
                         poseFrame: viewModel.latestPoseFrame,
-                        showsDepthGuide: viewModel.showsLiveRepCount,
+                        showsDepthGuide: viewModel.showsLiveRepCount && depthGuideEnabled,
+                        showsSkeleton: skeletonOverlayEnabled,
+                        showsAngleLabels: angleLabelsEnabled,
                         requiresFullBody: viewModel.requiresFullBody,
                         scalingMode: overlayScalingMode
                     )
@@ -46,9 +51,6 @@ struct LiveAnalysisView: View {
                 }
                 .overlay(alignment: .top) {
                     liveRepBadge
-                }
-                .overlay(alignment: .top) {
-                    validRepConfirmation
                 }
                 .overlay(alignment: .bottomLeading) {
                     tuningReadout
@@ -195,19 +197,9 @@ struct LiveAnalysisView: View {
                 .accessibilityLabel("Switch camera")
 
                 if viewModel.showsLiveRepCount {
-                    Button {
-                        audioCuesEnabled.toggle()
-                        viewModel.audioCuesEnabled = audioCuesEnabled
-                    } label: {
-                        Image(systemName: audioCuesEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 36, height: 32)
-                            .background(.black.opacity(0.58))
-                            .clipShape(Capsule())
-                    }
-                    .accessibilityLabel(audioCuesEnabled ? "Turn audio cues off" : "Turn audio cues on")
+                    audioCueButton
 
+                    #if DEBUG
                     Button {
                         viewModel.showsTuningReadout.toggle()
                     } label: {
@@ -221,6 +213,7 @@ struct LiveAnalysisView: View {
                     .accessibilityLabel(
                         viewModel.showsTuningReadout ? "Hide measurements" : "Show measurements"
                     )
+                    #endif
                 }
 
                 Menu {
@@ -254,6 +247,21 @@ struct LiveAnalysisView: View {
                     .padding(.horizontal, 16)
             }
         }
+    }
+
+    private var audioCueButton: some View {
+        Button {
+            audioCuesEnabled.toggle()
+            viewModel.audioCuesEnabled = audioCuesEnabled
+        } label: {
+            Image(systemName: audioCuesEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 32)
+                .background(.black.opacity(0.58))
+                .clipShape(Capsule())
+        }
+        .accessibilityLabel(audioCuesEnabled ? "Turn audio cues off" : "Turn audio cues on")
     }
 
     /// Kept deliberately low and see-through: it sits over the bottom of the frame, which is
@@ -317,31 +325,6 @@ struct LiveAnalysisView: View {
         if viewModel.recordingState == .recording, viewModel.showsLiveRepCount {
             RepCountBadge(count: viewModel.liveRepCount)
                 .padding(.top, 72)
-        }
-    }
-
-    @ViewBuilder
-    private var validRepConfirmation: some View {
-        if viewModel.recordingState == .recording,
-           viewModel.showsLiveRepCount,
-           viewModel.showsValidRepConfirmation {
-            Text("+1")
-                .font(.system(size: 34, weight: .black, design: .rounded))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 8)
-                .background(.green)
-                .clipShape(Capsule())
-                .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
-                .padding(.top, 158)
-                .id(viewModel.validRepConfirmationID)
-                .transition(.asymmetric(
-                    insertion: .scale(scale: 0.72).combined(with: .opacity),
-                    removal: .move(edge: .top).combined(with: .opacity)
-                ))
-                .animation(.spring(response: 0.26, dampingFraction: 0.68), value: viewModel.validRepConfirmationID)
-                .animation(.easeOut(duration: 0.18), value: viewModel.showsValidRepConfirmation)
-                .accessibilityLabel("Valid rep counted")
         }
     }
 
@@ -483,6 +466,8 @@ final class PreviewView: UIView {
 struct PoseOverlayView: View {
     let poseFrame: PoseFrame?
     var showsDepthGuide = false
+    var showsSkeleton = true
+    var showsAngleLabels = true
     /// When true, the skeleton is only drawn if the whole body is tracked (see PoseFrame.hasFullBody).
     var requiresFullBody = false
     var scalingMode: PoseOverlayGeometry.ScalingMode = .aspectFill
@@ -495,20 +480,24 @@ struct PoseOverlayView: View {
                     if showsDepthGuide {
                         drawDepthGuide(in: context, size: size, poseFrame: poseFrame)
                     }
-                    drawConnections(in: context, size: size, poseFrame: poseFrame)
-                    drawLandmarks(in: context, size: size, poseFrame: poseFrame)
+                    if showsSkeleton {
+                        drawConnections(in: context, size: size, poseFrame: poseFrame)
+                        drawLandmarks(in: context, size: size, poseFrame: poseFrame)
+                    }
                 }
 
-                ForEach(angleLabels(for: poseFrame, in: proxy.size)) { label in
-                    Text(label.text)
-                        .font(.caption2.weight(.black))
-                        .foregroundStyle(.white.opacity(0.86))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(.black.opacity(0.42))
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
-                        .position(label.position)
-                        .accessibilityLabel(label.accessibilityLabel)
+                if showsAngleLabels {
+                    ForEach(angleLabels(for: poseFrame, in: proxy.size)) { label in
+                        Text(label.text)
+                            .font(.caption2.weight(.black))
+                            .foregroundStyle(.white.opacity(0.86))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(.black.opacity(0.42))
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                            .position(label.position)
+                            .accessibilityLabel(label.accessibilityLabel)
+                    }
                 }
             }
         }

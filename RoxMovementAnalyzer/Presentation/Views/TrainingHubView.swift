@@ -20,6 +20,16 @@ struct TrainingHubView: View {
             .background(AppTheme.background)
             .navigationTitle("ROX Coach")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                    }
+                    .accessibilityLabel("Settings")
+                }
+            }
         }
     }
 

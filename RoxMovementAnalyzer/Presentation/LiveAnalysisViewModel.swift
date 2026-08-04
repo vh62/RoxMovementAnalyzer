@@ -35,9 +35,6 @@ final class LiveAnalysisViewModel {
     var showsPlayback = false
     /// Most recently completed rep, powering the tuning readout.
     var latestRep: WallBallRep?
-    /// Brief visual confirmation when a valid wall-ball rep is counted.
-    var showsValidRepConfirmation = false
-    var validRepConfirmationID = UUID()
     /// User-controlled: voice cues are helpful for missed reps, but noisy if forced on.
     var audioCuesEnabled = false
     /// Shows raw per-rep measurements so thresholds can be calibrated against real footage.
@@ -60,7 +57,6 @@ final class LiveAnalysisViewModel {
     private var capturedFrames: [PoseFrame] = []
     private var liveRepAnalyzer = WallBallRepAnalyzer()
     private var recordingFinishTask: Task<Void, Never>?
-    private var validRepConfirmationTask: Task<Void, Never>?
     private var cueHoldUntil: Date?
 
     /// How long a fault cue stays on screen before the standing cue returns.
@@ -186,9 +182,6 @@ final class LiveAnalysisViewModel {
             hasLoggedFrameLimit = false
             liveRepCount = 0
             latestRep = nil
-            showsValidRepConfirmation = false
-            validRepConfirmationTask?.cancel()
-            validRepConfirmationTask = nil
             cueHoldUntil = nil
             shallowRepCueAllowedAt = .distantPast
             sessionScorecard = nil
@@ -322,13 +315,8 @@ final class LiveAnalysisViewModel {
 
         if selectedStation == .wallBalls {
             let previousRepCount = liveRepAnalyzer.completedReps.count
-            let previousValidRepCount = liveRepAnalyzer.validRepsSoFar
             liveRepAnalyzer.process(poseFrame)
             liveRepCount = liveRepAnalyzer.validRepsSoFar
-
-            if liveRepCount > previousValidRepCount {
-                showValidRepConfirmation()
-            }
 
             if liveRepAnalyzer.completedReps.count > previousRepCount,
                let rep = liveRepAnalyzer.completedReps.last {
@@ -336,19 +324,6 @@ final class LiveAnalysisViewModel {
             }
         }
         refreshCueIfExpired()
-    }
-
-    private func showValidRepConfirmation() {
-        validRepConfirmationTask?.cancel()
-        validRepConfirmationID = UUID()
-        showsValidRepConfirmation = true
-
-        validRepConfirmationTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(850))
-            guard !Task.isCancelled, let self else { return }
-            self.showsValidRepConfirmation = false
-            self.validRepConfirmationTask = nil
-        }
     }
 
     /// Shows coaching for the rep just finished, held long enough to read before the standing cue
