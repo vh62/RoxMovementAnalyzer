@@ -97,6 +97,11 @@ struct WallBallRepAnalyzer {
                 return
             }
 
+            if rep.hasStoodUp, !rep.reachedDepth {
+                finalizeOpenRep()
+                return
+            }
+
             if rep.isComplete {
                 finalizeOpenRep()
             }

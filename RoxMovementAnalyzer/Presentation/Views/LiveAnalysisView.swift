@@ -4,6 +4,7 @@ import SwiftUI
 
 struct LiveAnalysisView: View {
     @Environment(SessionExportService.self) private var exportService
+    @AppStorage("wallBallAudioCuesEnabled") private var audioCuesEnabled = false
     @State private var viewModel: LiveAnalysisViewModel
 
     #if DEBUG
@@ -46,6 +47,9 @@ struct LiveAnalysisView: View {
                 .overlay(alignment: .top) {
                     liveRepBadge
                 }
+                .overlay(alignment: .top) {
+                    validRepConfirmation
+                }
                 .overlay(alignment: .bottomLeading) {
                     tuningReadout
                 }
@@ -62,6 +66,7 @@ struct LiveAnalysisView: View {
         .navigationTitle(viewModel.selectedStation.rawValue)
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            viewModel.audioCuesEnabled = audioCuesEnabled
             #if DEBUG
             // Hook up the file source before preparing, so nothing is missed once it starts.
             configureDebugVideoSource()
@@ -72,6 +77,7 @@ struct LiveAnalysisView: View {
             #endif
         }
         .onAppear {
+            viewModel.audioCuesEnabled = audioCuesEnabled
             // Returning from playback: the camera was released when the set finished, and `.task`
             // does not run again after a push, so restart the preview here.
             viewModel.resumeSession()
@@ -91,6 +97,9 @@ struct LiveAnalysisView: View {
                 timeline: timeline,
                 station: viewModel.selectedStation
             )
+        }
+        .onChange(of: audioCuesEnabled) { _, isEnabled in
+            viewModel.audioCuesEnabled = isEnabled
         }
         .navigationDestination(isPresented: $viewModel.showsScorecard) {
             if let scorecard = viewModel.sessionScorecard {
@@ -186,6 +195,19 @@ struct LiveAnalysisView: View {
                 .accessibilityLabel("Switch camera")
 
                 if viewModel.showsLiveRepCount {
+                    Button {
+                        audioCuesEnabled.toggle()
+                        viewModel.audioCuesEnabled = audioCuesEnabled
+                    } label: {
+                        Image(systemName: audioCuesEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 32)
+                            .background(.black.opacity(0.58))
+                            .clipShape(Capsule())
+                    }
+                    .accessibilityLabel(audioCuesEnabled ? "Turn audio cues off" : "Turn audio cues on")
+
                     Button {
                         viewModel.showsTuningReadout.toggle()
                     } label: {
@@ -295,6 +317,31 @@ struct LiveAnalysisView: View {
         if viewModel.recordingState == .recording, viewModel.showsLiveRepCount {
             RepCountBadge(count: viewModel.liveRepCount)
                 .padding(.top, 72)
+        }
+    }
+
+    @ViewBuilder
+    private var validRepConfirmation: some View {
+        if viewModel.recordingState == .recording,
+           viewModel.showsLiveRepCount,
+           viewModel.showsValidRepConfirmation {
+            Text("+1")
+                .font(.system(size: 34, weight: .black, design: .rounded))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
+                .background(.green)
+                .clipShape(Capsule())
+                .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
+                .padding(.top, 158)
+                .id(viewModel.validRepConfirmationID)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.72).combined(with: .opacity),
+                    removal: .move(edge: .top).combined(with: .opacity)
+                ))
+                .animation(.spring(response: 0.26, dampingFraction: 0.68), value: viewModel.validRepConfirmationID)
+                .animation(.easeOut(duration: 0.18), value: viewModel.showsValidRepConfirmation)
+                .accessibilityLabel("Valid rep counted")
         }
     }
 

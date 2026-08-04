@@ -35,6 +35,11 @@ final class LiveAnalysisViewModel {
     var showsPlayback = false
     /// Most recently completed rep, powering the tuning readout.
     var latestRep: WallBallRep?
+    /// Brief visual confirmation when a valid wall-ball rep is counted.
+    var showsValidRepConfirmation = false
+    var validRepConfirmationID = UUID()
+    /// User-controlled: voice cues are helpful for missed reps, but noisy if forced on.
+    var audioCuesEnabled = false
     /// Shows raw per-rep measurements so thresholds can be calibrated against real footage.
     var showsTuningReadout = false
 
@@ -51,13 +56,16 @@ final class LiveAnalysisViewModel {
     private let feedbackGenerator: LiveFeedbackGenerating
     private let sessionAnalyzer: LiveSessionAnalyzing
     private let poseEstimator: PoseEstimating?
+    private let repCuePlayer: RepCuePlaying
     private var capturedFrames: [PoseFrame] = []
     private var liveRepAnalyzer = WallBallRepAnalyzer()
     private var recordingFinishTask: Task<Void, Never>?
+    private var validRepConfirmationTask: Task<Void, Never>?
     private var cueHoldUntil: Date?
 
     /// How long a fault cue stays on screen before the standing cue returns.
     private static let faultCueDuration: TimeInterval = 2.5
+    private static let shallowRepCueCooldown: TimeInterval = 2.0
 
     /// Backstop on the pose buffer — roughly 5.5 minutes at 60 fps, comfortably clear of the
     /// capture service's duration cap.
@@ -66,19 +74,22 @@ final class LiveAnalysisViewModel {
     private static let log = Logger(subsystem: "rox.analysis", category: "LiveAnalysisViewModel")
 
     private var hasLoggedFrameLimit = false
+    private var shallowRepCueAllowedAt = Date.distantPast
 
     init(
         selectedStation: HyroxStation = .wallBalls,
         cameraService: CameraCaptureServicing = AVFoundationCameraCaptureService(),
         feedbackGenerator: LiveFeedbackGenerating = StationRuleLiveFeedbackGenerator(),
         sessionAnalyzer: LiveSessionAnalyzing = PoseSessionAnalyzer(),
-        poseEstimator: PoseEstimating? = SharedPoseEstimator.shared
+        poseEstimator: PoseEstimating? = SharedPoseEstimator.shared,
+        repCuePlayer: RepCuePlaying = SystemRepCuePlayer()
     ) {
         self.selectedStation = selectedStation
         self.cameraService = cameraService
         self.feedbackGenerator = feedbackGenerator
         self.sessionAnalyzer = sessionAnalyzer
         self.poseEstimator = poseEstimator
+        self.repCuePlayer = repCuePlayer
         self.currentCue = feedbackGenerator.readyCue(for: selectedStation)
 
         cameraService.recordingFinishedHandler = { [weak self] result in
@@ -175,7 +186,11 @@ final class LiveAnalysisViewModel {
             hasLoggedFrameLimit = false
             liveRepCount = 0
             latestRep = nil
+            showsValidRepConfirmation = false
+            validRepConfirmationTask?.cancel()
+            validRepConfirmationTask = nil
             cueHoldUntil = nil
+            shallowRepCueAllowedAt = .distantPast
             sessionScorecard = nil
             sessionVideoURL = nil
             sessionTimeline = nil
@@ -307,22 +322,43 @@ final class LiveAnalysisViewModel {
 
         if selectedStation == .wallBalls {
             let previousRepCount = liveRepAnalyzer.completedReps.count
+            let previousValidRepCount = liveRepAnalyzer.validRepsSoFar
             liveRepAnalyzer.process(poseFrame)
             liveRepCount = liveRepAnalyzer.validRepsSoFar
+
+            if liveRepCount > previousValidRepCount {
+                showValidRepConfirmation()
+            }
 
             if liveRepAnalyzer.completedReps.count > previousRepCount,
                let rep = liveRepAnalyzer.completedReps.last {
                 handleCompletedRep(rep)
             }
         }
-
         refreshCueIfExpired()
+    }
+
+    private func showValidRepConfirmation() {
+        validRepConfirmationTask?.cancel()
+        validRepConfirmationID = UUID()
+        showsValidRepConfirmation = true
+
+        validRepConfirmationTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(850))
+            guard !Task.isCancelled, let self else { return }
+            self.showsValidRepConfirmation = false
+            self.validRepConfirmationTask = nil
+        }
     }
 
     /// Shows coaching for the rep just finished, held long enough to read before the standing cue
     /// returns.
     private func handleCompletedRep(_ rep: WallBallRep) {
         latestRep = rep
+
+        if !rep.reachedDepth {
+            playShallowRepCueIfAllowed()
+        }
 
         if let fault = rep.faults.first {
             currentCue = feedbackGenerator.faultCue(for: fault, station: selectedStation)
@@ -331,6 +367,16 @@ final class LiveAnalysisViewModel {
             currentCue = feedbackGenerator.framingCue(for: selectedStation)
             cueHoldUntil = Date().addingTimeInterval(Self.faultCueDuration)
         }
+    }
+
+    private func playShallowRepCueIfAllowed() {
+        guard audioCuesEnabled else { return }
+
+        let now = Date()
+        guard now >= shallowRepCueAllowedAt else { return }
+
+        repCuePlayer.playShallowRepCue()
+        shallowRepCueAllowedAt = now.addingTimeInterval(Self.shallowRepCueCooldown)
     }
 
     /// Restores the standing recording cue once a fault cue has had its time.

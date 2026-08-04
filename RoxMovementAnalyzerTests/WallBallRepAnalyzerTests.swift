@@ -151,6 +151,20 @@ final class WallBallRepAnalyzerTests: XCTestCase {
         XCTAssertEqual(mixed.attempts, 5)
     }
 
+    func testShallowAttemptCompletesWhenAthleteRisesWithoutDepth() throws {
+        let frames = rep(startMs: 0, bottomDelta: -0.04).frames
+        var analyzer = WallBallRepAnalyzer()
+
+        for frame in frames {
+            analyzer.process(frame)
+            if !analyzer.completedReps.isEmpty { break }
+        }
+
+        let shallowRep = try XCTUnwrap(analyzer.completedReps.first)
+        XCTAssertFalse(shallowRep.reachedDepth)
+        XCTAssertEqual(analyzer.validRepsSoFar, 0)
+    }
+
     // MARK: - Release timing
 
     func testCleanRepIsNotFlagged() throws {
