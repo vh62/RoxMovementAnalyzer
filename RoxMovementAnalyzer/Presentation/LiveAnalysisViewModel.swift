@@ -63,10 +63,6 @@ final class LiveAnalysisViewModel {
     private static let faultCueDuration: TimeInterval = 2.5
     private static let shallowRepCueCooldown: TimeInterval = 2.0
 
-    /// Backstop on the pose buffer — roughly 5.5 minutes at 60 fps, comfortably clear of the
-    /// capture service's duration cap.
-    private static let maximumCapturedFrames = 20_000
-
     private static let log = Logger(subsystem: "rox.analysis", category: "LiveAnalysisViewModel")
 
     private var hasLoggedFrameLimit = false
@@ -299,13 +295,13 @@ final class LiveAnalysisViewModel {
 
         guard recordingState == .recording else { return }
 
-        // The duration cap should stop things long before this, but the debug video-file source
-        // has no movie output and therefore no limit. Stop growing rather than doing it silently.
-        guard capturedFrames.count < Self.maximumCapturedFrames else {
+        // Video frames are streamed, but pose frames are retained for replay/scorecard. Stop
+        // growing rather than doing it silently, especially for long debug-video sources.
+        guard capturedFrames.count < cameraService.maximumCapturedPoseFrames else {
             if !hasLoggedFrameLimit {
                 hasLoggedFrameLimit = true
                 Self.log.error(
-                    "hit the captured-frame ceiling; analysis covers the first \(Self.maximumCapturedFrames, privacy: .public) frames only"
+                    "hit the captured-frame ceiling; analysis covers the first \(self.cameraService.maximumCapturedPoseFrames, privacy: .public) frames only"
                 )
             }
             return

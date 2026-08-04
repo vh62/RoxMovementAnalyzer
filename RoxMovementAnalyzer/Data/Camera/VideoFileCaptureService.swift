@@ -60,6 +60,8 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
     var maximumRecordingDuration: TimeInterval {
         AVFoundationCameraCaptureService.maximumRecordingDuration
     }
+    /// Debug videos can be arbitrarily long; keep the retained pose timeline smaller than live capture.
+    let maximumCapturedPoseFrames = 6_000
 
     private var feedTask: Task<Void, Never>?
     private var baseTimestampMilliseconds = 0

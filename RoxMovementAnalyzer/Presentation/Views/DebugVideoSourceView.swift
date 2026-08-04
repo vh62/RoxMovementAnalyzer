@@ -94,15 +94,27 @@ struct DebugVideoSourceView: View {
                 loadError = "That item could not be read as a video."
                 return
             }
+
+            removeTemporaryPickedVideo(at: loadedURL)
             loadedURL = movie.url
         } catch {
             loadError = error.localizedDescription
         }
     }
+
+    private func removeTemporaryPickedVideo(at url: URL?) {
+        guard let url,
+              url.deletingLastPathComponent() == FileManager.default.temporaryDirectory,
+              url.lastPathComponent.hasPrefix(PickedMovie.temporaryFilePrefix) else { return }
+
+        try? FileManager.default.removeItem(at: url)
+    }
 }
 
 /// Copies a picked video into the temporary directory so `AVAssetReader` has a file to open.
 private struct PickedMovie: Transferable {
+    static let temporaryFilePrefix = "rox-debug-source-"
+
     let url: URL
 
     static var transferRepresentation: some TransferRepresentation {
@@ -110,7 +122,7 @@ private struct PickedMovie: Transferable {
             SentTransferredFile(movie.url)
         } importing: { received in
             let destination = FileManager.default.temporaryDirectory
-                .appendingPathComponent("rox-debug-source-\(UUID().uuidString)")
+                .appendingPathComponent("\(Self.temporaryFilePrefix)\(UUID().uuidString)")
                 .appendingPathExtension(received.file.pathExtension.isEmpty ? "mov" : received.file.pathExtension)
 
             try? FileManager.default.removeItem(at: destination)

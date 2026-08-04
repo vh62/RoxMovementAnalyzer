@@ -28,6 +28,8 @@ protocol CameraCaptureServicing: AnyObject {
     var session: AVCaptureSession { get }
     /// Longest a single set may record before it stops itself.
     var maximumRecordingDuration: TimeInterval { get }
+    /// Maximum pose frames held for analysis/replay. Video frames are streamed, but pose frames are retained.
+    var maximumCapturedPoseFrames: Int { get }
     var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)? { get set }
     /// Called on the main actor once the movie file has finished writing, which happens some
     /// time after `stopRecording()` returns.
@@ -80,11 +82,13 @@ final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
     /// minutes — while keeping the movie file around half a gigabyte and the pose data the
     /// analysis holds in memory to roughly 18 MB.
     static let maximumRecordingDuration: TimeInterval = 300
+    static let maximumCapturedPoseFrames = 20_000
 
     /// Stop while there is still room to finalise the file rather than failing mid-write.
     private static let minimumFreeDiskSpace: Int64 = 250 * 1024 * 1024
 
     var maximumRecordingDuration: TimeInterval { Self.maximumRecordingDuration }
+    var maximumCapturedPoseFrames: Int { Self.maximumCapturedPoseFrames }
 
     let session = AVCaptureSession()
     var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)?
