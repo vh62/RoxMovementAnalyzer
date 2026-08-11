@@ -63,8 +63,18 @@ struct WallBallThresholds: Equatable {
 
     // MARK: Viewpoint
 
+    /// Where the camera-angle classification divides. Shared with every other station rather than
+    /// owned here — see `ViewpointThresholds`.
+    var viewpoint = ViewpointThresholds.default
+
     /// Shoulder width ÷ torso length below this reads as a side-on view.
-    var sideOnRatio: Double = 0.5
+    var sideOnRatio: Double {
+        get { viewpoint.sideOnRatio }
+        set { viewpoint.sideOnRatio = newValue }
+    }
     /// Shoulder width ÷ torso length above this reads as a front-on view.
-    var frontOnRatio: Double = 0.8
+    var frontOnRatio: Double {
+        get { viewpoint.frontOnRatio }
+        set { viewpoint.frontOnRatio = newValue }
+    }
 }

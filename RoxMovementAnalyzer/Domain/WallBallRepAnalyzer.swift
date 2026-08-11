@@ -81,7 +81,7 @@ struct WallBallRepAnalyzer {
         let delta = hipY - kneeY
         deepestDelta = max(deepestDelta ?? delta, delta)
 
-        let viewpoint = frame.viewpoint(thresholds: thresholds)
+        let viewpoint = frame.viewpoint(thresholds: thresholds.viewpoint)
         if viewpoint != .unknown { lastViewpoint = viewpoint }
 
         recordArmSample(from: frame, at: seconds)

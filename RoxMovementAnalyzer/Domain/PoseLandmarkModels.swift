@@ -139,10 +139,28 @@ enum PoseGeometry {
         return acos(cosine) * 180 / .pi
     }
 
-    static func angleFromVertical(from lower: PoseLandmark, to upper: PoseLandmark) -> Double? {
-        let deltaX = upper.x - lower.x
-        let deltaY = lower.y - upper.y
+    /// Angle from vertical in degrees, **signed**: positive when `upper` sits at a greater x than
+    /// `lower` in image coordinates.
+    ///
+    /// Image-relative, not athlete-relative. Which direction counts as "forward" depends on which
+    /// way the athlete faces, so callers apply the facing sign themselves and this stays a dumb
+    /// primitive — see `PoseFrame.forwardTorsoLean(facing:)`.
+    static func signedAngleFromVertical(
+        fromX: Double, fromY: Double, toX: Double, toY: Double
+    ) -> Double? {
+        let deltaX = toX - fromX
+        let deltaY = fromY - toY
         guard deltaX != 0 || deltaY != 0 else { return nil }
-        return abs(atan2(deltaX, deltaY) * 180 / .pi)
+        return atan2(deltaX, deltaY) * 180 / .pi
+    }
+
+    static func signedAngleFromVertical(from lower: PoseLandmark, to upper: PoseLandmark) -> Double? {
+        signedAngleFromVertical(fromX: lower.x, fromY: lower.y, toX: upper.x, toY: upper.y)
+    }
+
+    /// Magnitude of the lean, direction discarded — the right primitive when only "how far from
+    /// upright" matters. Defined in terms of the signed form so the two cannot drift apart.
+    static func angleFromVertical(from lower: PoseLandmark, to upper: PoseLandmark) -> Double? {
+        signedAngleFromVertical(from: lower, to: upper).map(abs)
     }
 }
