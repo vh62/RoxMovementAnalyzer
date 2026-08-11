@@ -6,10 +6,8 @@ struct LiveAnalysisView: View {
     @Environment(SessionExportService.self) private var exportService
     @State private var viewModel: LiveAnalysisViewModel
 
-    #if DEBUG
-    /// Latest frame from the debug video-file source, shown in place of the camera preview.
-    @State private var debugFrame: CVPixelBuffer?
-    #endif
+    /// Latest frame from a video-file source, shown in place of the camera preview.
+    @State private var importedFrame: CVPixelBuffer?
 
     @MainActor
     init(viewModel: LiveAnalysisViewModel) {
@@ -28,8 +26,9 @@ struct LiveAnalysisView: View {
                 .overlay {
                     PoseOverlayView(
                         poseFrame: viewModel.latestPoseFrame,
-                        showsDepthGuide: viewModel.showsLiveRepCount,
-                        requiresFullBody: viewModel.requiresFullBody
+                        showsDepthGuide: viewModel.showsDepthGuide,
+                        requiresFullBody: viewModel.requiresFullBody,
+                        contentMode: overlayContentMode
                     )
                     .ignoresSafeArea()
                 }
@@ -61,14 +60,10 @@ struct LiveAnalysisView: View {
         .navigationTitle(viewModel.selectedStation.rawValue)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            #if DEBUG
             // Hook up the file source before preparing, so nothing is missed once it starts.
-            configureDebugVideoSource()
-            #endif
+            configureVideoFileSource()
             await viewModel.prepareCamera()
-            #if DEBUG
-            startDebugVideoIfNeeded()
-            #endif
+            startVideoFileIfNeeded()
         }
         .onAppear {
             // Returning from playback: the camera was released when the set finished, and `.task`
@@ -107,18 +102,33 @@ struct LiveAnalysisView: View {
         }
     }
 
-    #if DEBUG
-    private var debugVideoSource: VideoFileCaptureService? {
+    private var videoFileSource: VideoFileCaptureService? {
         viewModel.cameraService as? VideoFileCaptureService
+    }
+
+    /// The camera path stays on `.fill`, exactly as it always has: the preview layer fills the
+    /// screen and the capture connection already rotates frames upright, so the orientations agree
+    /// by construction.
+    ///
+    /// Only an imported clip can disagree with the screen — a RowErg video is filmed landscape —
+    /// and only there is the mode derived from the footage.
+    private var overlayContentMode: PoseOverlayGeometry.ContentMode {
+        guard videoFileSource != nil, let frame = viewModel.latestPoseFrame else { return .fill }
+        return .forSource(aspectRatio: frame.sourceAspectRatio, in: previewSize)
+    }
+
+    /// The overlay canvas fills the screen, so its own bounds are the container the mode depends on.
+    private var previewSize: CGSize {
+        UIScreen.main.bounds.size
     }
 
     /// Mirrors the decoded frames into the preview and stops the "recording" at end of clip, so a
     /// picked video runs start to finish and lands on the scorecard without any tapping.
-    private func configureDebugVideoSource() {
-        guard let source = debugVideoSource else { return }
+    private func configureVideoFileSource() {
+        guard let source = videoFileSource else { return }
 
         source.previewFrameHandler = { buffer in
-            debugFrame = buffer
+            importedFrame = buffer
         }
         source.feedFinishedHandler = {
             guard viewModel.recordingState == .recording else { return }
@@ -126,25 +136,31 @@ struct LiveAnalysisView: View {
         }
     }
 
-    private func startDebugVideoIfNeeded() {
-        guard debugVideoSource != nil, viewModel.recordingState == .ready else { return }
+    private func startVideoFileIfNeeded() {
+        guard videoFileSource != nil, viewModel.recordingState == .ready else { return }
         viewModel.toggleRecording()
     }
-    #endif
 
-    /// A file-backed debug source has no capture session, so it shows the decoded frames instead
-    /// of a preview layer.
-    @ViewBuilder
+    /// A file-backed source has no capture session, so it shows the decoded frames instead of a
+    /// preview layer.
+    ///
+    /// Sized from a `GeometryReader` rather than left to SwiftUI. Both of these wrap a plain UIView
+    /// with no intrinsic content size, and `maxWidth: .infinity` only asks to grow *within* whatever
+    /// SwiftUI decided the ideal size was — for a sizeless representable that ends up being derived
+    /// from the siblings in the stack, which is how the decoded frame ended up as a half-size box
+    /// floating off to one side. A GeometryReader fills its proposal greedily, so pinning to
+    /// `proxy.size` states the size outright instead of asking for it.
     private var preview: some View {
-        #if DEBUG
-        if viewModel.cameraService is VideoFileCaptureService {
-            DecodedFramePreview(pixelBuffer: debugFrame)
-        } else {
-            CameraPreviewView(session: viewModel.cameraService.session)
+        GeometryReader { proxy in
+            Group {
+                if viewModel.cameraService is VideoFileCaptureService {
+                    DecodedFramePreview(pixelBuffer: importedFrame)
+                } else {
+                    CameraPreviewView(session: viewModel.cameraService.session)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        #else
-        CameraPreviewView(session: viewModel.cameraService.session)
-        #endif
     }
 
     private var topOverlay: some View {
@@ -281,22 +297,44 @@ struct LiveAnalysisView: View {
     @ViewBuilder
     private var liveRepBadge: some View {
         if viewModel.recordingState == .recording, viewModel.showsLiveRepCount {
-            RepCountBadge(count: viewModel.liveRepCount)
-                .padding(.top, 72)
+            RepCountBadge(
+                count: viewModel.liveRepCount,
+                noun: viewModel.selectedStation.countNoun
+            )
+            .padding(.top, 72)
         }
     }
 
-    /// Raw measurements from the last completed rep, for calibrating `WallBallThresholds`.
+    /// Raw measurements from the last completed movement, for calibrating the station's thresholds.
     @ViewBuilder
     private var tuningReadout: some View {
-        if viewModel.showsTuningReadout, let rep = viewModel.latestRep {
+        if viewModel.showsTuningReadout {
             VStack(alignment: .leading, spacing: 2) {
-                Text("REP \(rep.index + 1) · \(rep.viewpoint.rawValue)")
-                    .font(.caption2.weight(.black))
-                Text("depth  \(String(format: "%+.3f", rep.deepestDelta))")
-                Text("release \(rep.releaseOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")")
-                Text("reach  \(rep.catchReach.map { String(format: "%.2f", $0) } ?? "—")")
-                Text("hands  \(rep.handsTracked ? "tracked" : "lost")")
+                switch viewModel.latestAnalysis {
+                case .wallBalls(let reps):
+                    if let rep = reps.last {
+                        Text("REP \(rep.index + 1) · \(rep.viewpoint.rawValue)")
+                            .font(.caption2.weight(.black))
+                        Text("depth  \(String(format: "%+.3f", rep.deepestDelta))")
+                        Text("release \(rep.releaseOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")")
+                        Text("reach  \(rep.catchReach.map { String(format: "%.2f", $0) } ?? "—")")
+                        Text("hands  \(rep.handsTracked ? "tracked" : "lost")")
+                    }
+                case .rowing(let strokes):
+                    if let stroke = strokes.last {
+                        Text("STROKE \(stroke.index + 1) · \(stroke.viewpoint.rawValue)")
+                            .font(.caption2.weight(.black))
+                        Text("catch  \(String(format: "%.0f°", stroke.catchKneeAngle))")
+                        Text("rate   \(stroke.strokeRateSPM.map { String(format: "%.1f spm", $0) } ?? "—")")
+                        Text("ratio  \(stroke.recoveryRatio.map { String(format: "%.2f", $0) } ?? "—")")
+                        Text("back   \(stroke.backSwingOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")")
+                        Text("arms   \(stroke.armBreakOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")")
+                        Text("slide  \(stroke.slideRatio.map { String(format: "%.2f", $0) } ?? "—")")
+                        Text("hands  \(stroke.handsTracked ? "tracked" : "lost")")
+                    }
+                case .unsupported:
+                    EmptyView()
+                }
             }
             .font(.caption2.monospacedDigit())
             .foregroundStyle(.white)
@@ -330,21 +368,23 @@ struct LiveAnalysisView: View {
         }
     }
 
+    /// Sized to the label rather than the screen.
+    ///
+    /// A full-width block at the bottom was covering the athlete's feet, which is exactly where the
+    /// eye needs to go for depth. This keeps a comfortable tap target while giving the frame back.
     private var controls: some View {
-        HStack(spacing: 12) {
-            Button {
-                viewModel.toggleRecording()
-            } label: {
-                Label(recordButtonTitle, systemImage: recordButtonSymbolName)
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(recordButtonColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .disabled(!canToggleRecording)
+        Button {
+            viewModel.toggleRecording()
+        } label: {
+            Label(recordButtonTitle, systemImage: recordButtonSymbolName)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 11)
+                .background(recordButtonColor)
+                .clipShape(Capsule())
         }
+        .disabled(!canToggleRecording)
     }
 
     private var stateLabel: String {
@@ -426,6 +466,12 @@ struct PoseOverlayView: View {
     var showsDepthGuide = false
     /// When true, the skeleton is only drawn if the whole body is tracked (see PoseFrame.hasFullBody).
     var requiresFullBody = false
+    /// How the video underneath is fitted, so the skeleton lands on the body.
+    ///
+    /// Defaults to `.fill` — the long-standing behaviour of the camera preview, which must not
+    /// change. Only the imported-video path passes anything else, because only there can the
+    /// footage's orientation disagree with the screen's.
+    var contentMode: PoseOverlayGeometry.ContentMode = .fill
 
 
     var body: some View {
@@ -464,15 +510,23 @@ struct PoseOverlayView: View {
             forNormalizedX: 0.5,
             y: guide.kneeLevel,
             in: size,
-            sourceAspectRatio: poseFrame.sourceAspectRatio
+            sourceAspectRatio: poseFrame.sourceAspectRatio,
+            contentMode: contentMode
         ).y
+
+        // Spans the video, not the container: run edge to edge and the line carries on over the
+        // letterbox bars, where it is measuring nothing.
+        let videoRect = PoseOverlayGeometry.videoRect(
+            in: size, sourceAspectRatio: poseFrame.sourceAspectRatio, contentMode: contentMode
+        )
+        guard videoRect.width > 0, kneeY >= videoRect.minY, kneeY <= videoRect.maxY else { return }
 
         let hipsBelow = guide.hasReachedDepth
         let guideColor: Color = hipsBelow ? .green : .white
 
         var line = Path()
-        line.move(to: CGPoint(x: 0, y: kneeY))
-        line.addLine(to: CGPoint(x: size.width, y: kneeY))
+        line.move(to: CGPoint(x: videoRect.minX, y: kneeY))
+        line.addLine(to: CGPoint(x: videoRect.maxX, y: kneeY))
         context.stroke(line, with: .color(.black.opacity(0.5)), style: StrokeStyle(lineWidth: 5, dash: [12, 7]))
         context.stroke(line, with: .color(guideColor), style: StrokeStyle(lineWidth: 3, dash: [12, 7]))
 
@@ -481,7 +535,7 @@ struct PoseOverlayView: View {
                 .font(.caption2.weight(.black))
         )
         label.shading = .color(guideColor)
-        context.draw(label, at: CGPoint(x: size.width / 2, y: max(kneeY - 14, 12)))
+        context.draw(label, at: CGPoint(x: videoRect.midX, y: max(kneeY - 14, videoRect.minY + 12)))
     }
 
     private func drawConnections(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
@@ -491,8 +545,10 @@ struct PoseOverlayView: View {
             var path = Path()
             path.move(to: point(for: start, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio))
             path.addLine(to: point(for: end, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio))
-            context.stroke(path, with: .color(.yellow), lineWidth: 4)
-            context.stroke(path, with: .color(.black.opacity(0.72)), lineWidth: 1.5)
+            // A thin dark line under a translucent white one: readable over both a bright gym wall
+            // and dark kit, without the saturated colour competing with the athlete.
+            context.stroke(path, with: .color(.black.opacity(0.28)), lineWidth: 3)
+            context.stroke(path, with: .color(.white.opacity(0.55)), lineWidth: 1.5)
         }
     }
 
@@ -500,9 +556,8 @@ struct PoseOverlayView: View {
         for landmark in poseFrame.landmarks {
             guard landmark.isVisible else { continue }
             let position = point(for: landmark, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio)
-            let rect = CGRect(x: position.x - 4, y: position.y - 4, width: 8, height: 8)
-            context.fill(Path(ellipseIn: rect), with: .color(.red))
-            context.stroke(Path(ellipseIn: rect), with: .color(.white), lineWidth: 1.5)
+            let rect = CGRect(x: position.x - 2, y: position.y - 2, width: 4, height: 4)
+            context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.7)))
         }
     }
 
@@ -549,7 +604,9 @@ struct PoseOverlayView: View {
     }
 
     private func point(for landmark: PoseLandmark, in size: CGSize, sourceAspectRatio: Double) -> CGPoint {
-        PoseOverlayGeometry.point(for: landmark, in: size, sourceAspectRatio: sourceAspectRatio)
+        PoseOverlayGeometry.point(
+            for: landmark, in: size, sourceAspectRatio: sourceAspectRatio, contentMode: contentMode
+        )
     }
 }
 

@@ -33,26 +33,30 @@ final class LiveAnalysisViewModel {
     /// Pose frames of the session just captured, aligned to video playback time.
     var sessionTimeline: SessionTimeline?
     var showsPlayback = false
-    /// Most recently completed rep, powering the tuning readout.
-    var latestRep: WallBallRep?
-    /// Shows raw per-rep measurements so thresholds can be calibrated against real footage.
+    /// Analysis of the movements completed so far, powering the tuning readout.
+    var latestAnalysis: StationAnalysis = .unsupported
+    /// Shows raw per-movement measurements so thresholds can be calibrated against real footage.
     var showsTuningReadout = false
 
     /// Whether the finished session can be watched back with its overlay.
     var canReviewVideo: Bool { sessionVideoURL != nil && !(sessionTimeline?.isEmpty ?? true) }
 
-    /// Whether a live rep counter is available for the selected station (currently Wall Balls only).
-    var showsLiveRepCount: Bool { selectedStation == .wallBalls }
+    /// Whether a live count is available for the selected station.
+    var showsLiveRepCount: Bool { selectedStation.hasMovementAnalysis }
 
     /// Stations whose analysis needs the whole body in frame — the skeleton is only drawn once the
-    /// full body is tracked (Wall Balls relies on hip-vs-knee depth, so a partial body is useless).
-    var requiresFullBody: Bool { selectedStation == .wallBalls }
+    /// full body is tracked, since both analysed stations measure joint relationships across it.
+    var requiresFullBody: Bool { selectedStation.requiresFullBody }
+
+    /// Whether to draw the hip-versus-knee parallel line. Wall balls only: it is a squat-judging
+    /// device and would be nonsense over a seated rower.
+    var showsDepthGuide: Bool { selectedStation.showsDepthGuide }
 
     private let feedbackGenerator: LiveFeedbackGenerating
     private let sessionAnalyzer: LiveSessionAnalyzing
     private let poseEstimator: PoseEstimating?
     private var capturedFrames: [PoseFrame] = []
-    private var liveRepAnalyzer = WallBallRepAnalyzer()
+    private var liveCounter = LiveMovementCounter(station: .wallBalls)
     private let audioCoach = SessionAudioCoach()
     private var recordingFinishTask: Task<Void, Never>?
     private var cueHoldUntil: Date?
@@ -174,11 +178,11 @@ final class LiveAnalysisViewModel {
             cameraService.startSession()
             try cameraService.startRecording()
             capturedFrames.removeAll(keepingCapacity: true)
-            liveRepAnalyzer = WallBallRepAnalyzer()
+            liveCounter = LiveMovementCounter(station: selectedStation)
             hasLoggedFrameLimit = false
             audioCoach.startSession()
             liveRepCount = 0
-            latestRep = nil
+            latestAnalysis = .unsupported
             cueHoldUntil = nil
             sessionScorecard = nil
             sessionVideoURL = nil
@@ -282,9 +286,9 @@ final class LiveAnalysisViewModel {
             }
         }
 
-        cameraService.sampleBufferHandler = { [weak estimator] sampleBuffer, timestampInMilliseconds in
+        cameraService.sampleBufferHandler = { [weak estimator] pixelBuffer, timestampInMilliseconds in
             estimator?.detect(
-                sampleBuffer: sampleBuffer,
+                pixelBuffer: pixelBuffer,
                 timestampInMilliseconds: timestampInMilliseconds
             )
         }
@@ -310,45 +314,61 @@ final class LiveAnalysisViewModel {
 
         capturedFrames.append(poseFrame)
 
-        if selectedStation == .wallBalls {
-            let previousRepCount = liveRepAnalyzer.completedReps.count
-            let previousValidReps = liveRepAnalyzer.validRepsSoFar
-            liveRepAnalyzer.process(poseFrame)
-            liveRepCount = liveRepAnalyzer.validRepsSoFar
+        if selectedStation.hasMovementAnalysis {
+            let previousCompleted = liveCounter.completedMovements.count
+            let previousCount = liveCounter.count
+            liveCounter.process(poseFrame)
+            liveRepCount = liveCounter.count
+            latestAnalysis = liveCounter.analysis
 
-            // Counted the instant the hips break parallel, which is when a judge would call it —
-            // about a second before the rep record closes at the catch.
-            if liveRepAnalyzer.validRepsSoFar > previousValidReps {
-                audioCoach.announce(rep: liveRepAnalyzer.validRepsSoFar)
+            // Counted the moment it happens — when the hips break parallel, which is when a judge
+            // would call it, or at the catch that opens a stroke — rather than when the record
+            // closes about a second later.
+            if liveCounter.count > previousCount {
+                audioCoach.announce(rep: liveCounter.count)
             }
 
-            if liveRepAnalyzer.completedReps.count > previousRepCount,
-               let rep = liveRepAnalyzer.completedReps.last {
-                handleCompletedRep(rep)
+            let completed = liveCounter.completedMovements
+            if completed.count > previousCompleted, let movement = completed.last {
+                handleCompletedMovement(movement)
             }
         }
 
         refreshCueIfExpired()
     }
 
-    /// Shows coaching for the rep just finished, held long enough to read before the standing cue
-    /// returns.
-    private func handleCompletedRep(_ rep: WallBallRep) {
-        latestRep = rep
-
-        // A shallow rep cannot be known until the athlete starts back up, so this lands at rep
-        // completion rather than at the bottom. It never collides with the count: a rep either
-        // broke parallel and was counted, or it did not and is called here.
-        if !rep.reachedDepth {
+    /// Shows coaching for the movement just finished, held long enough to read before the standing
+    /// cue returns.
+    private func handleCompletedMovement(_ movement: CountedMovement) {
+        // Only wall balls has a rule a movement can fail. A shallow rep cannot be known until the
+        // athlete starts back up, so this lands at completion rather than at the bottom, and it
+        // never collides with the count: a rep either broke parallel and was counted, or it did not
+        // and is called here. Rowing has no no-rep — every stroke counts — so it stays silent.
+        if selectedStation.hasNoRepRule, !movement.counted {
             audioCoach.announceNoRep()
         }
 
-        if let fault = rep.faults.first {
+        if let fault = movement.fault {
             currentCue = feedbackGenerator.faultCue(for: fault, station: selectedStation)
             cueHoldUntil = Date().addingTimeInterval(Self.faultCueDuration)
-        } else if !rep.handsTracked {
+        } else if needsFramingHelp(for: movement) {
             currentCue = feedbackGenerator.framingCue(for: selectedStation)
             cueHoldUntil = Date().addingTimeInterval(Self.faultCueDuration)
+        }
+    }
+
+    /// Whether the hands left frame during the movement, so the throw or the handle draw could not
+    /// be measured. Both stations depend on the wrists and both lose them the same way.
+    private func needsFramingHelp(for movement: CountedMovement) -> Bool {
+        switch latestAnalysis {
+        case .wallBalls(let reps):
+            guard let rep = reps.first(where: { $0.index == movement.index }) else { return false }
+            return !rep.handsTracked
+        case .rowing(let strokes):
+            guard let stroke = strokes.first(where: { $0.index == movement.index }) else { return false }
+            return !stroke.handsTracked
+        case .unsupported:
+            return false
         }
     }
 

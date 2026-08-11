@@ -71,21 +71,34 @@ struct SessionPlaybackView: View {
         }
     }
 
+    /// The recording's shape, taken from the first tracked frame.
+    private var sourceAspectRatio: Double {
+        timeline.entries.first?.frame.sourceAspectRatio ?? 9.0 / 16.0
+    }
+
     private var videoStage: some View {
         // resizeAspectFill matches PoseOverlayView.point(for:in:sourceAspectRatio:), which maps
         // normalized landmarks with the same aspect-fill letterboxing.
-        PlayerLayerView(player: player)
+        PlayerLayerView(player: player, sourceAspectRatio: sourceAspectRatio)
             .overlay {
                 PoseOverlayView(
                     poseFrame: timeline.frame(at: currentTime),
-                    showsDepthGuide: station == .wallBalls,
-                    requiresFullBody: station == .wallBalls
+                    showsDepthGuide: station.showsDepthGuide,
+                    requiresFullBody: station.requiresFullBody,
+                    // Matches the player layer's gravity below. A portrait session derives `.fill`,
+                    // which is what replay has always used.
+                    contentMode: .forSource(
+                        aspectRatio: sourceAspectRatio, in: UIScreen.main.bounds.size
+                    )
                 )
             }
             .overlay(alignment: .top) {
-                if station == .wallBalls {
-                    RepCountBadge(count: timeline.validReps(at: currentTime))
-                        .padding(.top, 16)
+                if station.hasMovementAnalysis {
+                    RepCountBadge(
+                        count: timeline.count(at: currentTime),
+                        noun: station.countNoun
+                    )
+                    .padding(.top, 16)
                 }
             }
             .overlay(alignment: .bottom) {
@@ -121,17 +134,40 @@ struct SessionPlaybackView: View {
         }
     }
 
-    /// Raw measurements for the rep at the playhead, for calibrating `WallBallThresholds`.
+    /// Raw measurements for the movement at the playhead, for calibrating the station's thresholds.
+    ///
+    /// Deliberately station-specific: the numbers worth reading while tuning wall balls have nothing
+    /// in common with the ones worth reading while tuning a rowing stroke.
     @ViewBuilder
     private var tuningReadout: some View {
-        if showsTuning, let rep = timeline.rep(at: currentTime) {
+        if showsTuning, let movement = timeline.movement(at: currentTime) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("REP \(rep.index + 1) · \(rep.viewpoint.rawValue)")
-                    .font(.caption2.weight(.black))
-                readoutRow("depth", String(format: "%+.3f", rep.deepestDelta))
-                readoutRow("release", rep.releaseOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")
-                readoutRow("reach", rep.catchReach.map { String(format: "%.2f", $0) } ?? "—")
-                readoutRow("hands", rep.handsTracked ? "tracked" : "lost")
+                switch timeline.analysis {
+                case .wallBalls(let reps):
+                    if let rep = reps.first(where: { $0.index == movement.index }) {
+                        Text("REP \(rep.index + 1) · \(rep.viewpoint.rawValue)")
+                            .font(.caption2.weight(.black))
+                        readoutRow("depth", String(format: "%+.3f", rep.deepestDelta))
+                        readoutRow("release", rep.releaseOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")
+                        readoutRow("reach", rep.catchReach.map { String(format: "%.2f", $0) } ?? "—")
+                        readoutRow("hands", rep.handsTracked ? "tracked" : "lost")
+                    }
+                case .rowing(let strokes):
+                    if let stroke = strokes.first(where: { $0.index == movement.index }) {
+                        Text("STROKE \(stroke.index + 1) · \(stroke.viewpoint.rawValue)")
+                            .font(.caption2.weight(.black))
+                        readoutRow("catch", String(format: "%.0f°", stroke.catchKneeAngle))
+                        readoutRow("finish", String(format: "%.0f°", stroke.finishKneeAngle))
+                        readoutRow("rate", stroke.strokeRateSPM.map { String(format: "%.1f spm", $0) } ?? "—")
+                        readoutRow("ratio", stroke.recoveryRatio.map { String(format: "%.2f", $0) } ?? "—")
+                        readoutRow("back", stroke.backSwingOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")
+                        readoutRow("arms", stroke.armBreakOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")
+                        readoutRow("slide", stroke.slideRatio.map { String(format: "%.2f", $0) } ?? "—")
+                        readoutRow("hands", stroke.handsTracked ? "tracked" : "lost")
+                    }
+                case .unsupported:
+                    EmptyView()
+                }
             }
             .font(.caption2.monospacedDigit())
             .foregroundStyle(.white)
@@ -191,13 +227,13 @@ struct SessionPlaybackView: View {
     /// scrubbing blind.
     @ViewBuilder
     private var faultMarkers: some View {
-        if duration > 0, !timeline.faultedReps.isEmpty {
+        if duration > 0, !timeline.faultedMovements.isEmpty {
             GeometryReader { proxy in
-                ForEach(timeline.faultedReps) { rep in
+                ForEach(timeline.faultedMovements) { movement in
                     Capsule()
                         .fill(.red)
                         .frame(width: 2.5, height: 10)
-                        .offset(x: proxy.size.width * min(rep.endSeconds / duration, 1) - 1.25)
+                        .offset(x: proxy.size.width * min(movement.endSeconds / duration, 1) - 1.25)
                 }
             }
             .allowsHitTesting(false)
@@ -298,26 +334,48 @@ struct SessionPlaybackView: View {
     }
 }
 
-/// AVPlayerLayer wrapper — `VideoPlayer` does not expose `videoGravity`, which must be
-/// aspect-fill for the pose overlay's coordinate mapping to line up with the video.
+/// AVPlayerLayer wrapper — `VideoPlayer` does not expose `videoGravity`, which has to match the
+/// pose overlay's coordinate mapping or the skeleton drifts off the body.
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
+    /// The recording's aspect ratio, so the gravity can be chosen the same way the overlay chooses
+    /// its mapping: fill a portrait clip, letterbox a landscape one.
+    let sourceAspectRatio: Double
 
     func makeUIView(context: Context) -> PlayerContainerView {
         let view = PlayerContainerView()
         view.playerLayer.player = player
-        view.playerLayer.videoGravity = .resizeAspectFill
+        view.sourceAspectRatio = sourceAspectRatio
         return view
     }
 
     func updateUIView(_ uiView: PlayerContainerView, context: Context) {
         uiView.playerLayer.player = player
+        uiView.sourceAspectRatio = sourceAspectRatio
     }
 }
 
 final class PlayerContainerView: UIView {
+    /// Re-evaluated on every layout, because the gravity depends on the container's shape as well
+    /// as the recording's.
+    var sourceAspectRatio: Double = 9.0 / 16.0 {
+        didSet { applyGravity() }
+    }
+
     override class var layerClass: AnyClass {
         AVPlayerLayer.self
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        applyGravity()
+    }
+
+    private func applyGravity() {
+        let mode = PoseOverlayGeometry.ContentMode.forSource(
+            aspectRatio: sourceAspectRatio, in: bounds.size
+        )
+        playerLayer.videoGravity = mode == .fill ? .resizeAspectFill : .resizeAspect
     }
 
     var playerLayer: AVPlayerLayer {
