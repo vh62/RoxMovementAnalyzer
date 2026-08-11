@@ -518,14 +518,18 @@ struct PoseOverlayView: View {
                     }
                 }
 
+                // Dark and translucent rather than solid yellow. These sit right on the joints they
+                // describe, so a bright opaque chip hides the very thing the athlete is checking.
+                // Legible against a gym floor or dark kit, without becoming the brightest thing in
+                // the frame.
                 ForEach(showsAngleLabels ? angleLabels(for: poseFrame, in: proxy.size) : []) { label in
                     Text(label.text)
-                        .font(.caption2.weight(.black))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(.yellow)
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .font(.caption2.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(.black.opacity(0.45))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
                         .position(label.position)
                         .accessibilityLabel(label.accessibilityLabel)
                 }
