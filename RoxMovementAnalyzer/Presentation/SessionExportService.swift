@@ -28,11 +28,18 @@ final class SessionExportService {
     private(set) var job: Job = .idle
 
     /// Whether finished sessions are copied into the photo library automatically.
+    ///
+    /// **Off until the athlete turns it on.** A session video is footage of a person, and copying it
+    /// out of the app and into their library is theirs to authorise, not ours to assume — the
+    /// system's photo-access prompt asks whether we *may*, never whether they *want* to. Every
+    /// export stays in the app's own storage and offers an explicit "Save to Photos" instead.
     var autoSaveToPhotos: Bool {
         didSet { UserDefaults.standard.set(autoSaveToPhotos, forKey: Self.autoSaveKey) }
     }
 
     private static let autoSaveKey = "rox.autoSaveToPhotos"
+    /// Marks the one-time reset of the legacy default.
+    private static let consentMigrationKey = "rox.autoSaveConsentReset"
     /// Once the user declines photo access we stop asking on later sets.
     private var photoAccessDeclined = false
     private var exportTask: Task<Void, Never>?
@@ -40,9 +47,16 @@ final class SessionExportService {
 
     init() {
         let defaults = UserDefaults.standard
-        if defaults.object(forKey: Self.autoSaveKey) == nil {
-            defaults.set(true, forKey: Self.autoSaveKey)
+
+        // Earlier builds wrote `true` into defaults on first launch, so simply changing the default
+        // would leave every existing install still auto-saving — the people who never opted in are
+        // exactly the ones this protects. Clear it once so everyone starts from off and opts in
+        // deliberately.
+        if !defaults.bool(forKey: Self.consentMigrationKey) {
+            defaults.removeObject(forKey: Self.autoSaveKey)
+            defaults.set(true, forKey: Self.consentMigrationKey)
         }
+
         self.autoSaveToPhotos = defaults.bool(forKey: Self.autoSaveKey)
     }
 
@@ -116,8 +130,9 @@ final class SessionExportService {
         let exporter = OverlayVideoExporter(
             timeline: request.timeline,
             renderer: PoseOverlayRenderer(
-                showsDepthGuide: request.station == .wallBalls,
-                requiresFullBody: request.station == .wallBalls
+                showsDepthGuide: request.station.showsDepthGuide,
+                requiresFullBody: request.station.requiresFullBody,
+                countNoun: request.station.countNoun
             )
         )
 
@@ -152,7 +167,7 @@ final class SessionExportService {
 
     private func finishExport(at url: URL) async {
         guard autoSaveToPhotos, !photoAccessDeclined else {
-            job = .exportedNotSaved(url: url, reason: "Saved to the app — tap to share")
+            job = .exportedNotSaved(url: url, reason: "Ready — save to Photos or share")
             startNextIfNeeded()
             return
         }

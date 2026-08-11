@@ -35,6 +35,19 @@ struct SessionExportStatusView: View {
                 Spacer(minLength: 8)
 
                 if let url = exportService.exportedURL, !isSaved {
+                    // The video stays in the app until the athlete says otherwise. This is the only
+                    // path that copies it into their library.
+                    Button {
+                        Task { await exportService.saveExportedToPhotos() }
+                    } label: {
+                        Label("Save", systemImage: "square.and.arrow.down")
+                            .font(.caption.weight(.bold))
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(style.text)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Save session video to Photos")
+
                     ShareLink(item: url) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.subheadline.weight(.bold))
@@ -82,7 +95,10 @@ struct SessionExportStatusView: View {
     }
 }
 
-/// Lets the athlete turn off automatic copying to the photo library.
+/// Opt in to copying every finished session into the photo library.
+///
+/// Off by default. Until it is on, videos stay in the app and go to Photos only when the athlete
+/// taps Save on a particular session.
 struct AutoSaveToggle: View {
     @Environment(SessionExportService.self) private var exportService
 
@@ -90,8 +106,13 @@ struct AutoSaveToggle: View {
         @Bindable var service = exportService
 
         Toggle(isOn: $service.autoSaveToPhotos) {
-            Text("Save sessions to Photos")
-                .font(.caption.weight(.semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Always save sessions to Photos")
+                    .font(.caption.weight(.semibold))
+                Text("Off: videos stay in the app until you save them")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .toggleStyle(.switch)
     }
