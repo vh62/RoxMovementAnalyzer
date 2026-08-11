@@ -34,8 +34,10 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
             )
         }
 
-        if station == .wallBalls {
-            return wallBallScore(frames: frames)
+        switch station {
+        case .wallBalls: return wallBallScore(frames: frames)
+        case .rowing: return rowingScore(frames: frames)
+        default: break
         }
 
         let coverage = fullBodyCoverage(frames)
@@ -108,9 +110,14 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
 
         metrics.append(contentsOf: efficiencyMetrics(for: reps))
 
-        // Depth used to need its own alert here. It is a fault now, so efficiencyAlerts covers it
-        // along with the rest — reporting it twice would just say the same thing in two places.
-        let alerts = efficiencyAlerts(for: reps)
+        // Depth used to need its own alert here. It is a fault now, so the shared aggregation covers
+        // it along with the rest — reporting it twice would just say the same thing in two places.
+        let alerts = alerts(
+            for: StationAnalysis.wallBalls(reps).countedMovements,
+            station: .wallBalls,
+            kindOrder: WallBallFault.Kind.allCases.map(\.rawValue),
+            noun: "reps"
+        )
 
         return StationScore(
             station: .wallBalls,
@@ -121,6 +128,136 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
             metrics: metrics,
             alerts: alerts
         )
+    }
+
+    /// Stroke technique for a RowErg piece.
+    ///
+    /// Unlike wall balls this score is **not** a rule check. The erg logs the metres whatever the
+    /// stroke looked like, so there is no equivalent of a no-rep and nothing here voids a stroke —
+    /// the score is the share of strokes that raised no fault, against thresholds that have not yet
+    /// been calibrated on real footage.
+    private func rowingScore(frames: [PoseFrame]) -> StationScore {
+        let strokes = RowStrokeAnalyzer.analyze(frames: frames)
+
+        guard !strokes.isEmpty else {
+            return StationScore(
+                station: .rowing,
+                score: 0,
+                status: .needsWork,
+                primaryFeedback: "No rowing strokes were detected. Film from the side with the hips, "
+                    + "knees, and ankles in frame for the whole stroke, then record again.",
+                metrics: [
+                    MetricResult(label: "Strokes", value: "0", status: .needsWork),
+                    MetricResult(label: "Frames analyzed", value: "\(frames.count)", status: .caution)
+                ],
+                alerts: []
+            )
+        }
+
+        let clean = strokes.filter(\.faults.isEmpty).count
+        let accuracy = Double(clean) / Double(strokes.count)
+        let score = Int((accuracy * 100).rounded())
+
+        var metrics: [MetricResult] = [
+            MetricResult(label: "Strokes", value: "\(strokes.count)", status: .raceReady),
+            MetricResult(label: "Clean strokes", value: "\(clean)", status: depthStatus(accuracy))
+        ]
+
+        if let rate = mean(strokes.compactMap(\.strokeRateSPM)) {
+            metrics.append(
+                MetricResult(label: "Stroke rate", value: String(format: "%.0f spm", rate), status: .raceReady)
+            )
+        }
+
+        if let ratio = mean(strokes.compactMap(\.recoveryRatio)) {
+            let rushed = strokes.filter { $0.hasFault(.rushingTheRecovery) }.count
+            metrics.append(
+                MetricResult(
+                    label: "Drive:recovery",
+                    value: String(format: "1:%.1f", ratio),
+                    status: rushed == 0 ? .strong : (rushed > strokes.count / 3 ? .needsWork : .caution)
+                )
+            )
+        }
+
+        if let catchAngle = mean(strokes.map(\.catchKneeAngle)) {
+            let short = strokes.filter { $0.hasFault(.incompleteCatch) }.count
+            metrics.append(
+                MetricResult(
+                    label: "Catch angle",
+                    value: "\(Int(catchAngle.rounded()))°",
+                    status: short == 0 ? .strong : .caution
+                )
+            )
+        }
+
+        // Say why rather than silently omitting the handle numbers.
+        if let viewpoint = strokes.last?.viewpoint, !viewpoint.supportsReachMeasurement {
+            metrics.append(
+                MetricResult(label: "Handle travel", value: "Needs side view", status: .caution)
+            )
+        } else if let slide = mean(strokes.compactMap(\.slideRatio)) {
+            let shooting = strokes.filter { $0.hasFault(.shootingTheSlide) }.count
+            metrics.append(
+                MetricResult(
+                    label: "Handle travel",
+                    value: String(format: "%.0f%% of seat", slide * 100),
+                    status: shooting == 0 ? .strong : .caution
+                )
+            )
+        }
+
+        if strokes.contains(where: { !$0.handsTracked }) {
+            metrics.append(MetricResult(label: "Hands in frame", value: "Partial", status: .caution))
+        }
+
+        return StationScore(
+            station: .rowing,
+            score: score,
+            status: depthStatus(accuracy),
+            primaryFeedback: "\(clean) of \(strokes.count) strokes were clean. Every stroke counts on "
+                + "the erg — this scores the sequencing and range of the stroke, not whether it was "
+                + "legal, and the thresholds behind it are starting estimates rather than calibrated "
+                + "values.",
+            metrics: metrics,
+            alerts: alerts(
+                for: StationAnalysis.rowing(strokes).countedMovements,
+                station: .rowing,
+                kindOrder: RowingFault.Kind.allCases.map(\.rawValue),
+                noun: "strokes"
+            )
+        )
+    }
+
+    private func mean(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
+    }
+
+    /// One alert per fault kind, pointing at the first movement where it happened so the scorecard
+    /// can jump the replay to that moment.
+    ///
+    /// Shared by both analysed stations: `kindOrder` supplies the station's own priority so the
+    /// alerts come out in the order that station would coach them.
+    private func alerts(
+        for movements: [CountedMovement],
+        station: HyroxStation,
+        kindOrder: [String],
+        noun: String
+    ) -> [RedFlagAlert] {
+        kindOrder.compactMap { kind in
+            let offending = movements.filter { $0.faults.contains { $0.kindIdentifier == kind } }
+            guard let first = offending.first,
+                  let fault = first.faults.first(where: { $0.kindIdentifier == kind }) else { return nil }
+
+            return RedFlagAlert(
+                station: station,
+                title: fault.title,
+                message: "\(offending.count) of \(movements.count) \(noun). \(fault.coachingDetail)",
+                severity: offending.count > movements.count / 3 ? fault.severity : .low,
+                timestamp: first.calloutSeconds
+            )
+        }
     }
 
     /// Release-timing and catch-position readouts, alongside the depth numbers.
@@ -171,24 +308,7 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
         return metrics
     }
 
-    /// One alert per fault kind, pointing at the first rep where it happened so the scorecard can
-    /// jump the replay to that moment.
-    private func efficiencyAlerts(for reps: [WallBallRep]) -> [RedFlagAlert] {
-        WallBallFault.Kind.allCases.compactMap { kind in
-            let offending = reps.filter { $0.hasFault(kind) }
-            guard let first = offending.first,
-                  let fault = first.faults.first(where: { $0.kind == kind }) else { return nil }
-
-            return RedFlagAlert(
-                station: .wallBalls,
-                title: fault.title,
-                message: "\(offending.count) of \(reps.count) reps. \(fault.coachingDetail)",
-                severity: offending.count > reps.count / 3 ? fault.severity : .low,
-                timestamp: first.releaseSeconds ?? first.endSeconds
-            )
-        }
-    }
-
+    /// Banding shared by wall-ball depth accuracy and the rowing clean-stroke share.
     private func depthStatus(_ accuracy: Double) -> StationStatus {
         switch accuracy {
         case 0.9...: .strong
