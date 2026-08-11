@@ -9,11 +9,9 @@ struct TrainingHubView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     header
                     liveAnalysisCard
+                    videoAnalysisCard
                     movementSelector
                     recentReviewCard
-                    #if DEBUG
-                    debugVideoSourceCard
-                    #endif
                 }
                 .padding(20)
             }
@@ -23,27 +21,34 @@ struct TrainingHubView: View {
         }
     }
 
-    #if DEBUG
-    /// Development only — analyse an existing video instead of standing in front of the camera.
-    private var debugVideoSourceCard: some View {
+    /// Analyse a clip already filmed, instead of standing in front of the camera. Same pipeline,
+    /// same scorecard — only the source of the frames differs.
+    private var videoAnalysisCard: some View {
         NavigationLink {
-            DebugVideoSourceView(station: selectedStation)
+            VideoAnalysisView(station: selectedStation)
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "ladybug.fill")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(AppTheme.muted)
+            HStack(spacing: 14) {
+                Image(systemName: "film")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                    .frame(width: 44, height: 44)
+                    .background(AppTheme.ink.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Analyse a video (debug)")
-                        .font(.subheadline.weight(.bold))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Analyse a Video")
+                        .font(.headline.weight(.bold))
                         .foregroundStyle(AppTheme.ink)
-                    Text("Run a saved clip through the pipeline")
+                    Text("Score a clip you already filmed")
                         .font(.caption)
                         .foregroundStyle(AppTheme.muted)
                 }
 
                 Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.muted)
             }
             .padding(14)
             .background(.white)
@@ -51,7 +56,6 @@ struct TrainingHubView: View {
         }
         .buttonStyle(.plain)
     }
-    #endif
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {

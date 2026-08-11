@@ -19,6 +19,7 @@ struct RoxMovementAnalyzerApp: App {
             SharedPoseEstimator.prewarm()
             // Clear out exports left behind by earlier sessions or interrupted jobs.
             SessionExportStore.pruneStaleExports()
+            ImportedVideoStore.pruneStaleImports()
         }
     }
 
