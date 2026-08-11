@@ -87,7 +87,7 @@ struct SessionPlaybackView: View {
                     requiresFullBody: station.requiresFullBody,
                     // Matches the player layer's gravity below. A portrait session derives `.fill`,
                     // which is what replay has always used.
-                    contentMode: .forSource(
+                    scalingMode: .forSource(
                         aspectRatio: sourceAspectRatio, in: UIScreen.main.bounds.size
                     )
                 )
@@ -372,10 +372,10 @@ final class PlayerContainerView: UIView {
     }
 
     private func applyGravity() {
-        let mode = PoseOverlayGeometry.ContentMode.forSource(
+        let mode = PoseOverlayGeometry.ScalingMode.forSource(
             aspectRatio: sourceAspectRatio, in: bounds.size
         )
-        playerLayer.videoGravity = mode == .fill ? .resizeAspectFill : .resizeAspect
+        playerLayer.videoGravity = mode == .aspectFill ? .resizeAspectFill : .resizeAspect
     }
 
     var playerLayer: AVPlayerLayer {

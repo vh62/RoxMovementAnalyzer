@@ -17,6 +17,7 @@ final class RecordingLimitTests: XCTestCase {
     private final class FakeCaptureService: CameraCaptureServicing {
         let session = AVCaptureSession()
         var maximumRecordingDuration: TimeInterval = 300
+        var maximumCapturedPoseFrames = 20_000
         var sampleBufferHandler: ((CVPixelBuffer, Int) -> Void)?
         var recordingFinishedHandler: ((Result<URL, Error>) -> Void)?
         var authorizationState: CameraAuthorizationState = .authorized

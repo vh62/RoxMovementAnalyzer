@@ -60,7 +60,7 @@ struct DecodedFramePreview: UIViewRepresentable {
             let aspectRatio = image.extent.height > 0
                 ? Double(image.extent.width / image.extent.height)
                 : 1
-            let mode = PoseOverlayGeometry.ContentMode.forSource(aspectRatio: aspectRatio, in: bounds.size)
+            let mode = PoseOverlayGeometry.ScalingMode.forSource(aspectRatio: aspectRatio, in: bounds.size)
 
             // No implicit animation: frames arrive continuously and a fade would smear them.
             CATransaction.begin()
@@ -69,7 +69,7 @@ struct DecodedFramePreview: UIViewRepresentable {
             // the layer at a stale rect, which is exactly how the frame ended up drawn off to one
             // side while every other measurement said the container was full-screen.
             syncImageLayerFrame()
-            imageLayer.contentsGravity = mode == .fill ? .resizeAspectFill : .resizeAspect
+            imageLayer.contentsGravity = mode == .aspectFill ? .resizeAspectFill : .resizeAspect
             imageLayer.contents = cgImage
             CATransaction.commit()
         }

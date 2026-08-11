@@ -48,24 +48,24 @@ enum PoseOverlayGeometry {
     ///
     /// The overlay and the video it sits on must agree, or the skeleton drifts off the body, which
     /// is why this lives here rather than in either view.
-    enum ContentMode {
+    enum ScalingMode {
         /// Fill the container and crop the overflow. Right when the source and the container share
         /// an orientation: a portrait clip on a portrait phone loses only a sliver off the sides.
-        case fill
+        case aspectFill
         /// Fit the whole frame in and letterbox the rest. Required when they disagree —
         /// aspect-filling a landscape RowErg clip onto a portrait phone keeps about a quarter of
         /// the frame width and throws away most of the machine along with it.
-        case fit
+        case aspectFit
 
         /// Fill when the source and container agree on orientation, fit when they do not.
         ///
         /// Wall balls is filmed portrait and rowing landscape, so this picks itself from the footage
         /// rather than needing the station to be threaded through every view.
-        static func forSource(aspectRatio: Double, in size: CGSize) -> ContentMode {
-            guard size.height > 0 else { return .fill }
+        static func forSource(aspectRatio: Double, in size: CGSize) -> ScalingMode {
+            guard size.height > 0 else { return .aspectFill }
             let sourceIsLandscape = aspectRatio > 1
             let containerIsLandscape = (size.width / size.height) > 1
-            return sourceIsLandscape == containerIsLandscape ? .fill : .fit
+            return sourceIsLandscape == containerIsLandscape ? .aspectFill : .aspectFit
         }
     }
 
@@ -76,15 +76,15 @@ enum PoseOverlayGeometry {
         y: Double,
         in size: CGSize,
         sourceAspectRatio: Double,
-        contentMode: ContentMode = .fill
+        scalingMode: ScalingMode = .aspectFill
     ) -> CGPoint {
         let containerAspectRatio = size.width / max(size.height, 1)
 
         // Which dimension the scaled frame is pinned to. Filling pins the one that overflows;
         // fitting pins the one that runs out first.
-        let matchesHeight = switch contentMode {
-        case .fill: sourceAspectRatio > containerAspectRatio
-        case .fit: sourceAspectRatio < containerAspectRatio
+        let matchesHeight = switch scalingMode {
+        case .aspectFill: sourceAspectRatio > containerAspectRatio
+        case .aspectFit: sourceAspectRatio < containerAspectRatio
         }
 
         let scaledSize = matchesHeight
@@ -108,18 +108,18 @@ enum PoseOverlayGeometry {
     /// Guides that span "the whole frame" — the squat parallel line especially — must span *this*,
     /// not the container. Drawn edge to edge they run out over the letterbox bars and read as a
     /// measurement of something that is not there.
-    static func videoRect(
+    static func mediaRect(
         in size: CGSize,
         sourceAspectRatio: Double,
-        contentMode: ContentMode = .fill
+        scalingMode: ScalingMode = .aspectFill
     ) -> CGRect {
         let topLeft = point(
             forNormalizedX: 0, y: 0, in: size,
-            sourceAspectRatio: sourceAspectRatio, contentMode: contentMode
+            sourceAspectRatio: sourceAspectRatio, scalingMode: scalingMode
         )
         let bottomRight = point(
             forNormalizedX: 1, y: 1, in: size,
-            sourceAspectRatio: sourceAspectRatio, contentMode: contentMode
+            sourceAspectRatio: sourceAspectRatio, scalingMode: scalingMode
         )
 
         return CGRect(
@@ -133,11 +133,11 @@ enum PoseOverlayGeometry {
         for landmark: PoseLandmark,
         in size: CGSize,
         sourceAspectRatio: Double,
-        contentMode: ContentMode = .fill
+        scalingMode: ScalingMode = .aspectFill
     ) -> CGPoint {
         point(
             forNormalizedX: landmark.x, y: landmark.y, in: size,
-            sourceAspectRatio: sourceAspectRatio, contentMode: contentMode
+            sourceAspectRatio: sourceAspectRatio, scalingMode: scalingMode
         )
     }
 

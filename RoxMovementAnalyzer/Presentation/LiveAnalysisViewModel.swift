@@ -35,6 +35,8 @@ final class LiveAnalysisViewModel {
     var showsPlayback = false
     /// Analysis of the movements completed so far, powering the tuning readout.
     var latestAnalysis: StationAnalysis = .unsupported
+    /// User-controlled: voice cues are helpful for missed reps, but noisy if forced on.
+    var audioCuesEnabled = false
     /// Shows raw per-movement measurements so thresholds can be calibrated against real footage.
     var showsTuningReadout = false
 
@@ -57,33 +59,33 @@ final class LiveAnalysisViewModel {
     private let poseEstimator: PoseEstimating?
     private var capturedFrames: [PoseFrame] = []
     private var liveCounter = LiveMovementCounter(station: .wallBalls)
-    private let audioCoach = SessionAudioCoach()
+    private let repCuePlayer: RepCuePlaying
     private var recordingFinishTask: Task<Void, Never>?
     private var cueHoldUntil: Date?
 
     /// How long a fault cue stays on screen before the standing cue returns.
     private static let faultCueDuration: TimeInterval = 2.5
-
-    /// Backstop on the pose buffer — roughly 5.5 minutes at 60 fps, comfortably clear of the
-    /// capture service's duration cap.
-    private static let maximumCapturedFrames = 20_000
+    private static let shallowRepCueCooldown: TimeInterval = 2.0
 
     private static let log = Logger(subsystem: "rox.analysis", category: "LiveAnalysisViewModel")
 
     private var hasLoggedFrameLimit = false
+    private var shallowRepCueAllowedAt = Date.distantPast
 
     init(
         selectedStation: HyroxStation = .wallBalls,
         cameraService: CameraCaptureServicing = AVFoundationCameraCaptureService(),
         feedbackGenerator: LiveFeedbackGenerating = StationRuleLiveFeedbackGenerator(),
         sessionAnalyzer: LiveSessionAnalyzing = PoseSessionAnalyzer(),
-        poseEstimator: PoseEstimating? = SharedPoseEstimator.shared
+        poseEstimator: PoseEstimating? = SharedPoseEstimator.shared,
+        repCuePlayer: RepCuePlaying = SystemRepCuePlayer()
     ) {
         self.selectedStation = selectedStation
         self.cameraService = cameraService
         self.feedbackGenerator = feedbackGenerator
         self.sessionAnalyzer = sessionAnalyzer
         self.poseEstimator = poseEstimator
+        self.repCuePlayer = repCuePlayer
         self.currentCue = feedbackGenerator.readyCue(for: selectedStation)
 
         cameraService.recordingFinishedHandler = { [weak self] result in
@@ -132,8 +134,6 @@ final class LiveAnalysisViewModel {
 
     func stopSession() {
         cameraService.stopSession()
-        // Leaving the screen mid-set must not leave the session ducking the athlete's music.
-        audioCoach.endSession()
     }
 
     /// Restarts the camera after a finished set released it.
@@ -180,8 +180,8 @@ final class LiveAnalysisViewModel {
             capturedFrames.removeAll(keepingCapacity: true)
             liveCounter = LiveMovementCounter(station: selectedStation)
             hasLoggedFrameLimit = false
-            audioCoach.startSession()
             liveRepCount = 0
+            shallowRepCueAllowedAt = .distantPast
             latestAnalysis = .unsupported
             cueHoldUntil = nil
             sessionScorecard = nil
@@ -260,7 +260,6 @@ final class LiveAnalysisViewModel {
         // asset writer — enough concurrent pipelines to take mediaserverd down, which surfaces
         // as the export failing with a generic "cannot complete action".
         cameraService.stopSession()
-        audioCoach.endSession()
 
         if canReviewVideo {
             showsPlayback = true
@@ -302,11 +301,11 @@ final class LiveAnalysisViewModel {
 
         // The duration cap should stop things long before this, but the debug video-file source
         // has no movie output and therefore no limit. Stop growing rather than doing it silently.
-        guard capturedFrames.count < Self.maximumCapturedFrames else {
+        guard capturedFrames.count < cameraService.maximumCapturedPoseFrames else {
             if !hasLoggedFrameLimit {
                 hasLoggedFrameLimit = true
                 Self.log.error(
-                    "hit the captured-frame ceiling; analysis covers the first \(Self.maximumCapturedFrames, privacy: .public) frames only"
+                    "hit the captured-frame ceiling; analysis covers the first \(self.cameraService.maximumCapturedPoseFrames, privacy: .public) frames only"
                 )
             }
             return
@@ -316,17 +315,9 @@ final class LiveAnalysisViewModel {
 
         if selectedStation.hasMovementAnalysis {
             let previousCompleted = liveCounter.completedMovements.count
-            let previousCount = liveCounter.count
             liveCounter.process(poseFrame)
             liveRepCount = liveCounter.count
             latestAnalysis = liveCounter.analysis
-
-            // Counted the moment it happens — when the hips break parallel, which is when a judge
-            // would call it, or at the catch that opens a stroke — rather than when the record
-            // closes about a second later.
-            if liveCounter.count > previousCount {
-                audioCoach.announce(rep: liveCounter.count)
-            }
 
             let completed = liveCounter.completedMovements
             if completed.count > previousCompleted, let movement = completed.last {
@@ -345,7 +336,7 @@ final class LiveAnalysisViewModel {
         // never collides with the count: a rep either broke parallel and was counted, or it did not
         // and is called here. Rowing has no no-rep — every stroke counts — so it stays silent.
         if selectedStation.hasNoRepRule, !movement.counted {
-            audioCoach.announceNoRep()
+            playShallowRepCueIfAllowed()
         }
 
         if let fault = movement.fault {
@@ -370,6 +361,16 @@ final class LiveAnalysisViewModel {
         case .unsupported:
             return false
         }
+    }
+
+    private func playShallowRepCueIfAllowed() {
+        guard audioCuesEnabled else { return }
+
+        let now = Date()
+        guard now >= shallowRepCueAllowedAt else { return }
+
+        repCuePlayer.playShallowRepCue()
+        shallowRepCueAllowedAt = now.addingTimeInterval(Self.shallowRepCueCooldown)
     }
 
     /// Restores the standing recording cue once a fault cue has had its time.

@@ -4,6 +4,10 @@ import SwiftUI
 
 struct LiveAnalysisView: View {
     @Environment(SessionExportService.self) private var exportService
+    @AppStorage(AppSettingsKeys.wallBallAudioCuesEnabled) private var audioCuesEnabled = false
+    @AppStorage(AppSettingsKeys.skeletonOverlayEnabled) private var skeletonOverlayEnabled = false
+    @AppStorage(AppSettingsKeys.angleLabelsEnabled) private var angleLabelsEnabled = false
+    @AppStorage(AppSettingsKeys.depthGuideEnabled) private var depthGuideEnabled = true
     @State private var viewModel: LiveAnalysisViewModel
 
     /// Latest frame from a video-file source, shown in place of the camera preview.
@@ -26,9 +30,11 @@ struct LiveAnalysisView: View {
                 .overlay {
                     PoseOverlayView(
                         poseFrame: viewModel.latestPoseFrame,
-                        showsDepthGuide: viewModel.showsDepthGuide,
+                        showsDepthGuide: viewModel.showsDepthGuide && depthGuideEnabled,
+                        showsSkeleton: skeletonOverlayEnabled,
+                        showsAngleLabels: angleLabelsEnabled,
                         requiresFullBody: viewModel.requiresFullBody,
-                        contentMode: overlayContentMode
+                        scalingMode: overlayScalingMode
                     )
                     .ignoresSafeArea()
                 }
@@ -60,12 +66,14 @@ struct LiveAnalysisView: View {
         .navigationTitle(viewModel.selectedStation.rawValue)
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            viewModel.audioCuesEnabled = audioCuesEnabled
             // Hook up the file source before preparing, so nothing is missed once it starts.
             configureVideoFileSource()
             await viewModel.prepareCamera()
             startVideoFileIfNeeded()
         }
         .onAppear {
+            viewModel.audioCuesEnabled = audioCuesEnabled
             // Returning from playback: the camera was released when the set finished, and `.task`
             // does not run again after a push, so restart the preview here.
             viewModel.resumeSession()
@@ -82,6 +90,9 @@ struct LiveAnalysisView: View {
                 timeline: timeline,
                 station: viewModel.selectedStation
             )
+        }
+        .onChange(of: audioCuesEnabled) { _, isEnabled in
+            viewModel.audioCuesEnabled = isEnabled
         }
         .navigationDestination(isPresented: $viewModel.showsScorecard) {
             if let scorecard = viewModel.sessionScorecard {
@@ -112,8 +123,8 @@ struct LiveAnalysisView: View {
     ///
     /// Only an imported clip can disagree with the screen — a RowErg video is filmed landscape —
     /// and only there is the mode derived from the footage.
-    private var overlayContentMode: PoseOverlayGeometry.ContentMode {
-        guard videoFileSource != nil, let frame = viewModel.latestPoseFrame else { return .fill }
+    private var overlayScalingMode: PoseOverlayGeometry.ScalingMode {
+        guard videoFileSource != nil, let frame = viewModel.latestPoseFrame else { return .aspectFill }
         return .forSource(aspectRatio: frame.sourceAspectRatio, in: previewSize)
     }
 
@@ -163,6 +174,21 @@ struct LiveAnalysisView: View {
         }
     }
 
+    private var audioCueButton: some View {
+        Button {
+            audioCuesEnabled.toggle()
+            viewModel.audioCuesEnabled = audioCuesEnabled
+        } label: {
+            Image(systemName: audioCuesEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 32)
+                .background(.black.opacity(0.58))
+                .clipShape(Capsule())
+        }
+        .accessibilityLabel(audioCuesEnabled ? "Turn audio cues off" : "Turn audio cues on")
+    }
+
     private var topOverlay: some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
@@ -190,6 +216,8 @@ struct LiveAnalysisView: View {
                 .accessibilityLabel("Switch camera")
 
                 if viewModel.showsLiveRepCount {
+                    audioCueButton
+
                     Button {
                         viewModel.showsTuningReadout.toggle()
                     } label: {
@@ -464,14 +492,16 @@ final class PreviewView: UIView {
 struct PoseOverlayView: View {
     let poseFrame: PoseFrame?
     var showsDepthGuide = false
+    var showsSkeleton = true
+    var showsAngleLabels = true
     /// When true, the skeleton is only drawn if the whole body is tracked (see PoseFrame.hasFullBody).
     var requiresFullBody = false
     /// How the video underneath is fitted, so the skeleton lands on the body.
     ///
-    /// Defaults to `.fill` — the long-standing behaviour of the camera preview, which must not
-    /// change. Only the imported-video path passes anything else, because only there can the
+    /// Defaults to `.aspectFill` — the long-standing behaviour of the camera preview, which must
+    /// not change. Only the imported-video path passes anything else, because only there can the
     /// footage's orientation disagree with the screen's.
-    var contentMode: PoseOverlayGeometry.ContentMode = .fill
+    var scalingMode: PoseOverlayGeometry.ScalingMode = .aspectFill
 
 
     var body: some View {
@@ -481,11 +511,13 @@ struct PoseOverlayView: View {
                     if showsDepthGuide {
                         drawDepthGuide(in: context, size: size, poseFrame: poseFrame)
                     }
-                    drawConnections(in: context, size: size, poseFrame: poseFrame)
-                    drawLandmarks(in: context, size: size, poseFrame: poseFrame)
+                    if showsSkeleton {
+                        drawConnections(in: context, size: size, poseFrame: poseFrame)
+                        drawLandmarks(in: context, size: size, poseFrame: poseFrame)
+                    }
                 }
 
-                ForEach(angleLabels(for: poseFrame, in: proxy.size)) { label in
+                ForEach(showsAngleLabels ? angleLabels(for: poseFrame, in: proxy.size) : []) { label in
                     Text(label.text)
                         .font(.caption2.weight(.black))
                         .foregroundStyle(.black)
@@ -511,13 +543,13 @@ struct PoseOverlayView: View {
             y: guide.kneeLevel,
             in: size,
             sourceAspectRatio: poseFrame.sourceAspectRatio,
-            contentMode: contentMode
+            scalingMode: scalingMode
         ).y
 
         // Spans the video, not the container: run edge to edge and the line carries on over the
         // letterbox bars, where it is measuring nothing.
-        let videoRect = PoseOverlayGeometry.videoRect(
-            in: size, sourceAspectRatio: poseFrame.sourceAspectRatio, contentMode: contentMode
+        let videoRect = PoseOverlayGeometry.mediaRect(
+            in: size, sourceAspectRatio: poseFrame.sourceAspectRatio, scalingMode: scalingMode
         )
         guard videoRect.width > 0, kneeY >= videoRect.minY, kneeY <= videoRect.maxY else { return }
 
@@ -605,7 +637,7 @@ struct PoseOverlayView: View {
 
     private func point(for landmark: PoseLandmark, in size: CGSize, sourceAspectRatio: Double) -> CGPoint {
         PoseOverlayGeometry.point(
-            for: landmark, in: size, sourceAspectRatio: sourceAspectRatio, contentMode: contentMode
+            for: landmark, in: size, sourceAspectRatio: sourceAspectRatio, scalingMode: scalingMode
         )
     }
 }

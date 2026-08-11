@@ -57,6 +57,12 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
         AVFoundationCameraCaptureService.maximumRecordingDuration
     }
 
+    /// A picked clip has no duration cap of its own, so the pose buffer is what actually bounds
+    /// memory here.
+    var maximumCapturedPoseFrames: Int {
+        AVFoundationCameraCaptureService.maximumCapturedPoseFrames
+    }
+
     private var feedTask: Task<Void, Never>?
     private var baseTimestampMilliseconds = 0
     private let rotator = FrameRotator()

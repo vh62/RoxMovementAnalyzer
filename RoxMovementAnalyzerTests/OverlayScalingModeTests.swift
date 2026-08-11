@@ -6,7 +6,7 @@ import XCTest
 /// Wall balls is filmed portrait and RowErg landscape, so a single hardcoded fill mode cannot serve
 /// both: aspect-filling a landscape clip onto a portrait phone throws away most of the frame width,
 /// and with it most of the machine.
-final class OverlayContentModeTests: XCTestCase {
+final class OverlayScalingModeTests: XCTestCase {
 
     private let portraitScreen = CGSize(width: 400, height: 860)
     private let portraitSource = 1080.0 / 1920.0
@@ -14,23 +14,23 @@ final class OverlayContentModeTests: XCTestCase {
 
     func testPortraitClipOnAPortraitScreenFills() {
         XCTAssertEqual(
-            PoseOverlayGeometry.ContentMode.forSource(aspectRatio: portraitSource, in: portraitScreen),
-            .fill,
+            PoseOverlayGeometry.ScalingMode.forSource(aspectRatio: portraitSource, in: portraitScreen),
+            .aspectFill,
             "orientations agree, so cropping a sliver off the sides is the right trade"
         )
     }
 
     func testLandscapeClipOnAPortraitScreenFits() {
         XCTAssertEqual(
-            PoseOverlayGeometry.ContentMode.forSource(aspectRatio: landscapeSource, in: portraitScreen),
-            .fit,
+            PoseOverlayGeometry.ScalingMode.forSource(aspectRatio: landscapeSource, in: portraitScreen),
+            .aspectFit,
             "filling would keep about a quarter of the frame width and lose most of the erg"
         )
     }
 
     func testFillingALandscapeClipWouldHaveCroppedMostOfTheWidth() {
-        let filled = PoseOverlayGeometry.videoRect(
-            in: portraitScreen, sourceAspectRatio: landscapeSource, contentMode: .fill
+        let filled = PoseOverlayGeometry.mediaRect(
+            in: portraitScreen, sourceAspectRatio: landscapeSource, scalingMode: .aspectFill
         )
         // The visible slice is the intersection with the screen, so compare against the full frame.
         let fullWidth = portraitScreen.height * landscapeSource
@@ -41,8 +41,8 @@ final class OverlayContentModeTests: XCTestCase {
     }
 
     func testFittingALandscapeClipKeepsTheWholeFrame() {
-        let rect = PoseOverlayGeometry.videoRect(
-            in: portraitScreen, sourceAspectRatio: landscapeSource, contentMode: .fit
+        let rect = PoseOverlayGeometry.mediaRect(
+            in: portraitScreen, sourceAspectRatio: landscapeSource, scalingMode: .aspectFit
         )
 
         XCTAssertEqual(rect.width, portraitScreen.width, accuracy: 0.5)
@@ -52,14 +52,14 @@ final class OverlayContentModeTests: XCTestCase {
     }
 
     func testLandmarksLandInsideTheVideoRectInBothModes() {
-        for (aspect, mode) in [(portraitSource, PoseOverlayGeometry.ContentMode.fill),
-                               (landscapeSource, .fit)] {
-            let rect = PoseOverlayGeometry.videoRect(
-                in: portraitScreen, sourceAspectRatio: aspect, contentMode: mode
+        for (aspect, mode) in [(portraitSource, PoseOverlayGeometry.ScalingMode.aspectFill),
+                               (landscapeSource, .aspectFit)] {
+            let rect = PoseOverlayGeometry.mediaRect(
+                in: portraitScreen, sourceAspectRatio: aspect, scalingMode: mode
             )
             let centre = PoseOverlayGeometry.point(
                 forNormalizedX: 0.5, y: 0.5, in: portraitScreen,
-                sourceAspectRatio: aspect, contentMode: mode
+                sourceAspectRatio: aspect, scalingMode: mode
             )
 
             XCTAssertEqual(centre.x, portraitScreen.width / 2, accuracy: 0.5)
@@ -72,7 +72,7 @@ final class OverlayContentModeTests: XCTestCase {
         // Regression cover: the camera path must map exactly as it did before content modes existed.
         let point = PoseOverlayGeometry.point(
             forNormalizedX: 0.25, y: 0.75, in: portraitScreen,
-            sourceAspectRatio: portraitSource, contentMode: .fill
+            sourceAspectRatio: portraitSource, scalingMode: .aspectFill
         )
 
         // A 9:16 clip is *taller* in proportion than this screen, so filling pins the height and

@@ -176,15 +176,35 @@ final class WallBallRepAnalyzerTests: XCTestCase {
         XCTAssertFalse(record.hasFault(.shallowDepth))
     }
 
-    /// A rep can be both shallow and mistimed. Depth must win, because it is what decides whether
-    /// the rep counts — and `faults.first` is what the athlete is told.
-    func testDepthOutranksATimingFault() throws {
+    /// Depth is the only thing reported on a shallow rep, and it is what the athlete is told.
+    ///
+    /// A shallow attempt closes the moment the athlete stands back up rather than waiting for the
+    /// catch, so the throw never happens inside the record and release timing cannot be measured on
+    /// it. That is the right trade: the rep did not count, and telling someone their timing was off
+    /// on a rep that was voided anyway buries the one correction that matters.
+    func testShallowRepReportsDepthAndNothingElse() throws {
         let frames = rep(startMs: 0, bottomDelta: -0.04, armLeadFrames: -6).frames
         let record = try XCTUnwrap(WallBallRepAnalyzer.analyze(frames: frames).first)
 
-        XCTAssertTrue(record.hasFault(.shallowDepth))
-        XCTAssertTrue(record.hasFault(.earlyRelease))
         XCTAssertEqual(record.faults.first?.kind, .shallowDepth)
+        XCTAssertFalse(
+            record.hasFault(.earlyRelease),
+            "the record closes at stand-up, before the throw, so there is no timing to judge"
+        )
+    }
+
+    func testShallowAttemptCompletesWhenAthleteRisesWithoutDepth() throws {
+        let frames = rep(startMs: 0, bottomDelta: -0.04).frames
+        var analyzer = WallBallRepAnalyzer()
+
+        for frame in frames {
+            analyzer.process(frame)
+            if !analyzer.completedReps.isEmpty { break }
+        }
+
+        let shallowRep = try XCTUnwrap(analyzer.completedReps.first)
+        XCTAssertFalse(shallowRep.reachedDepth)
+        XCTAssertEqual(analyzer.validRepsSoFar, 0)
     }
 
     // MARK: - Release timing
