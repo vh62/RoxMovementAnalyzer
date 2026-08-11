@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import UIKit
 import XCTest
 @testable import RoxMovementAnalyzer
 
@@ -16,7 +17,7 @@ final class RecordingLimitTests: XCTestCase {
     private final class FakeCaptureService: CameraCaptureServicing {
         let session = AVCaptureSession()
         var maximumRecordingDuration: TimeInterval = 300
-        var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)?
+        var sampleBufferHandler: ((CVPixelBuffer, Int) -> Void)?
         var recordingFinishedHandler: ((Result<URL, Error>) -> Void)?
         var authorizationState: CameraAuthorizationState = .authorized
         var activeCameraPosition: CameraPosition = .back

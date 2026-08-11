@@ -14,8 +14,15 @@ final class MediaPipePoseEstimator: NSObject, PoseEstimating {
     private let stateLock = NSLock()
     private var lastTimestamp = Int.min
 
+    private let runningMode: RunningMode
+
+    /// - Parameter runningMode: `.liveStream` for the camera, where the tracker is free to drop
+    ///   frames it cannot keep up with. `.video` for a file, where it must not: an imported clip
+    ///   should be analysed exhaustively rather than sampled, and the synchronous call also
+    ///   throttles the decode loop to inference speed for free.
     init(
         modelName: String = "pose_landmarker_lite",
+        runningMode: RunningMode = .liveStream,
         minimumPoseDetectionConfidence: Float = 0.5,
         minimumPosePresenceConfidence: Float = 0.5,
         minimumTrackingConfidence: Float = 0.5
@@ -24,26 +31,39 @@ final class MediaPipePoseEstimator: NSObject, PoseEstimating {
             throw MediaPipePoseEstimatorError.missingModel(modelName)
         }
 
+        self.runningMode = runningMode
         super.init()
 
         let options = PoseLandmarkerOptions()
         options.baseOptions.modelAssetPath = modelPath
-        options.runningMode = .liveStream
+        options.runningMode = runningMode
         options.numPoses = 1
         options.minPoseDetectionConfidence = minimumPoseDetectionConfidence
         options.minPosePresenceConfidence = minimumPosePresenceConfidence
         options.minTrackingConfidence = minimumTrackingConfidence
-        options.poseLandmarkerLiveStreamDelegate = self
+        if runningMode == .liveStream {
+            options.poseLandmarkerLiveStreamDelegate = self
+        }
 
         self.poseLandmarker = try PoseLandmarker(options: options)
     }
 
-    func detect(sampleBuffer: CMSampleBuffer, timestampInMilliseconds: Int) {
+    func detect(pixelBuffer: CVPixelBuffer, timestampInMilliseconds: Int) {
         let timestamp = nextTimestamp(atLeast: timestampInMilliseconds)
         do {
-            storeAspectRatio(for: sampleBuffer, timestampInMilliseconds: timestamp)
-            let image = try MPImage(sampleBuffer: sampleBuffer)
-            try poseLandmarker.detectAsync(image: image, timestampInMilliseconds: timestamp)
+            storeAspectRatio(for: pixelBuffer, timestampInMilliseconds: timestamp)
+            let image = try MPImage(pixelBuffer: pixelBuffer)
+
+            if runningMode == .video {
+                // Synchronous and lossless. Returns on the caller's thread, which for the file
+                // source is its own decode task, so nothing blocks the main actor.
+                let result = try poseLandmarker.detect(
+                    videoFrame: image, timestampInMilliseconds: timestamp
+                )
+                emit(result, timestampInMilliseconds: timestamp)
+            } else {
+                try poseLandmarker.detectAsync(image: image, timestampInMilliseconds: timestamp)
+            }
         } catch {
             Self.log.error("detect failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -52,6 +72,7 @@ final class MediaPipePoseEstimator: NSObject, PoseEstimating {
     /// Runs one throwaway inference on a blank frame so the model graph is built and warmed before
     /// the first real frame arrives. Safe to call once at launch on a background thread.
     func prewarm() {
+        guard runningMode == .liveStream else { return }
         guard let pixelBuffer = Self.makeBlankPixelBuffer(width: 256, height: 256) else { return }
         let timestamp = nextTimestamp(atLeast: 0)
         do {
@@ -80,13 +101,13 @@ final class MediaPipePoseEstimator: NSObject, PoseEstimating {
         return status == kCVReturnSuccess ? pixelBuffer : nil
     }
 
-    private func storeAspectRatio(for sampleBuffer: CMSampleBuffer, timestampInMilliseconds: Int) {
-        guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
-        let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
-        guard dimensions.height > 0 else { return }
+    private func storeAspectRatio(for pixelBuffer: CVPixelBuffer, timestampInMilliseconds: Int) {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        guard width > 0, height > 0 else { return }
 
         stateLock.lock()
-        frameAspectRatios[timestampInMilliseconds] = Double(dimensions.width) / Double(dimensions.height)
+        frameAspectRatios[timestampInMilliseconds] = Double(width) / Double(height)
         // Frames dropped by the tracker never get consumed; drop their stale entries so the map
         // does not grow without bound over a long session.
         if frameAspectRatios.count > 120 {
@@ -103,30 +124,10 @@ final class MediaPipePoseEstimator: NSObject, PoseEstimating {
         let aspectRatio = frameAspectRatios.removeValue(forKey: timestampInMilliseconds)
         return aspectRatio ?? (9 / 16)
     }
-}
 
-/// App-wide pose estimator, built and warmed once at launch so opening live analysis is not slow.
-enum SharedPoseEstimator {
-    static let shared: PoseEstimating? = try? MediaPipePoseEstimator()
-
-    /// Triggers the (lazy) model load and a warmup inference. Call off the main thread.
-    static func prewarm() {
-        (shared as? MediaPipePoseEstimator)?.prewarm()
-    }
-}
-
-extension MediaPipePoseEstimator: PoseLandmarkerLiveStreamDelegate {
-    func poseLandmarker(
-        _ poseLandmarker: PoseLandmarker,
-        didFinishDetection result: PoseLandmarkerResult?,
-        timestampInMilliseconds: Int,
-        error: Error?
-    ) {
-        if let error {
-            Self.log.error("detection callback error: \(error.localizedDescription, privacy: .public)")
-            return
-        }
-
+    /// Maps a MediaPipe result onto a `PoseFrame` and publishes it. Shared by both running modes so
+    /// a file and the camera cannot end up with subtly different landmark handling.
+    fileprivate func emit(_ result: PoseLandmarkerResult?, timestampInMilliseconds: Int) {
         guard let landmarks = result?.landmarks.first else {
             Self.log.debug("no pose detected at \(timestampInMilliseconds)")
             return
@@ -157,6 +158,42 @@ extension MediaPipePoseEstimator: PoseLandmarkerLiveStreamDelegate {
                 landmarks: poseLandmarks
             )
         )
+    }
+}
+
+/// App-wide pose estimator, built and warmed once at launch so opening live analysis is not slow.
+enum SharedPoseEstimator {
+    static let shared: PoseEstimating? = try? MediaPipePoseEstimator()
+
+    /// Triggers the (lazy) model load and a warmup inference. Call off the main thread.
+    static func prewarm() {
+        (shared as? MediaPipePoseEstimator)?.prewarm()
+    }
+
+    /// A separate estimator for analysing an imported video.
+    ///
+    /// Deliberately not the shared instance: that one is in `.liveStream` mode, which drops frames
+    /// under load. That is right for a camera — a dropped frame is gone either way — and wrong for
+    /// a file, where every frame is still there to be read and the athlete is entitled to have all
+    /// of them analysed. Built per import rather than cached, so its tracker state starts clean.
+    static func makeVideoEstimator() -> PoseEstimating? {
+        try? MediaPipePoseEstimator(runningMode: .video)
+    }
+}
+
+extension MediaPipePoseEstimator: PoseLandmarkerLiveStreamDelegate {
+    func poseLandmarker(
+        _ poseLandmarker: PoseLandmarker,
+        didFinishDetection result: PoseLandmarkerResult?,
+        timestampInMilliseconds: Int,
+        error: Error?
+    ) {
+        if let error {
+            Self.log.error("detection callback error: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        emit(result, timestampInMilliseconds: timestampInMilliseconds)
     }
 }
 

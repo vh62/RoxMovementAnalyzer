@@ -1,4 +1,5 @@
 import AVFoundation
+import UIKit
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -28,7 +29,7 @@ protocol CameraCaptureServicing: AnyObject {
     var session: AVCaptureSession { get }
     /// Longest a single set may record before it stops itself.
     var maximumRecordingDuration: TimeInterval { get }
-    var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)? { get set }
+    var sampleBufferHandler: ((CVPixelBuffer, Int) -> Void)? { get set }
     /// Called on the main actor once the movie file has finished writing, which happens some
     /// time after `stopRecording()` returns.
     var recordingFinishedHandler: ((Result<URL, Error>) -> Void)? { get set }
@@ -87,7 +88,7 @@ final class AVFoundationCameraCaptureService: NSObject, CameraCaptureServicing {
     var maximumRecordingDuration: TimeInterval { Self.maximumRecordingDuration }
 
     let session = AVCaptureSession()
-    var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)?
+    var sampleBufferHandler: ((CVPixelBuffer, Int) -> Void)?
     var recordingFinishedHandler: ((Result<URL, Error>) -> Void)?
 
     private let movieOutput = AVCaptureMovieFileOutput()
@@ -324,6 +325,8 @@ extension AVFoundationCameraCaptureService: AVCaptureVideoDataOutputSampleBuffer
     ) {
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let timestampInMilliseconds = Int(CMTimeGetSeconds(timestamp) * 1000)
-        sampleBufferHandler?(sampleBuffer, timestampInMilliseconds)
+        // The capture connection already rotates to portrait, so buffers arrive upright.
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        sampleBufferHandler?(pixelBuffer, timestampInMilliseconds)
     }
 }

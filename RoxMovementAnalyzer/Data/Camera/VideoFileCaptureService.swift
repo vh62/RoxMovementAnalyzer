@@ -1,31 +1,23 @@
-#if DEBUG
 import AVFoundation
 import CoreMedia
 import CoreVideo
 import Foundation
+import UIKit
 import os
 
 /// Feeds a video file through the analysis pipeline in place of the live camera.
 ///
-/// Debug-only. It exists so wall-ball analysis can be exercised repeatedly on identical footage
-/// — the only practical way to calibrate `WallBallThresholds`, which otherwise needs the same set
-/// performed the same way for every threshold tweak.
+/// This backs the "Analyse a video" flow, where an athlete picks a clip they already filmed, and it
+/// doubles as the way thresholds get calibrated: the same footage can be run repeatedly, which is
+/// the only practical alternative to performing an identical set for every threshold tweak.
 ///
-/// Because it conforms to `CameraCaptureServicing`, everything downstream (MediaPipe, the rep
-/// analyzer, the live cues, the scorecard, replay and the overlay export) runs completely
+/// Because it conforms to `CameraCaptureServicing`, everything downstream (MediaPipe, the rep and
+/// stroke analyzers, the live cues, the scorecard, replay and the overlay export) runs completely
 /// unchanged — the frames simply arrive from `AVAssetReader` instead of the capture session.
 ///
 /// It does not exercise the capture layer itself: portrait rotation and front-camera mirroring are
 /// set on the capture connections, which do not exist here. Keep testing those on a real camera.
 final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
-    /// How fast frames are handed to the pipeline.
-    enum Pacing {
-        /// Match the clip's own timing, so live cues and the fault hold behave as they would on camera.
-        case realTime
-        /// Push frames as fast as they decode, for quick threshold iteration.
-        case fast
-    }
-
     private static let log = Logger(subsystem: "rox.camera", category: "VideoFileCaptureService")
 
     /// MediaPipe's live-stream mode rejects timestamps that do not increase. Every replay restarts
@@ -38,7 +30,7 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
     /// instead of a preview layer when the source is file-backed.
     let session = AVCaptureSession()
 
-    var sampleBufferHandler: ((CMSampleBuffer, Int) -> Void)?
+    var sampleBufferHandler: ((CVPixelBuffer, Int) -> Void)?
     var recordingFinishedHandler: ((Result<URL, Error>) -> Void)?
     /// Each decoded frame, on the main actor, so the preview can show exactly what the pose
     /// estimator just saw rather than a separately-playing copy that could drift.
@@ -46,8 +38,12 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
     /// Fired on the main actor when the clip runs out, so the caller can stop the "recording".
     var feedFinishedHandler: (() -> Void)?
 
+    /// How the decoded buffers are rotated relative to upright, from the track's preferred
+    /// transform. The preview needs it to draw the frame the right way up, since nothing rotates
+    /// the buffer itself any more.
+    private(set) var sourceOrientation: UIImage.Orientation = .up
+
     let sourceURL: URL
-    let pacing: Pacing
 
     private(set) var isConfigured = false
     private(set) var isRunning = false
@@ -63,10 +59,10 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
 
     private var feedTask: Task<Void, Never>?
     private var baseTimestampMilliseconds = 0
+    private let rotator = FrameRotator()
 
-    init(url: URL, pacing: Pacing = .realTime) {
+    init(url: URL) {
         self.sourceURL = url
-        self.pacing = pacing
         super.init()
     }
 
@@ -123,6 +119,16 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
         throw CameraCaptureError.cameraUnavailable
     }
 
+    /// The rotation a track's preferred transform describes, as an image orientation.
+    static func orientation(for transform: CGAffineTransform) -> UIImage.Orientation {
+        switch (transform.a.rounded(), transform.b.rounded(), transform.c.rounded(), transform.d.rounded()) {
+        case (0, 1, -1, 0): .right   // portrait, recorded with the home button to the right
+        case (0, -1, 1, 0): .left    // portrait, the other way up
+        case (-1, 0, 0, -1): .down   // upside-down landscape
+        default: .up                 // landscape, already upright
+        }
+    }
+
     // MARK: - Feeding frames
 
     private func feedFrames() async {
@@ -134,20 +140,27 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
 
             let reader = try AVAssetReader(asset: asset)
 
-            // A composition output rather than a plain track output: it applies the track's
-            // preferredTransform, so a portrait clip arrives upright. Feeding sideways frames to
-            // the pose model finds nothing at all, since it expects an upright person.
-            let composition = try await AVMutableVideoComposition.videoComposition(
-                withPropertiesOf: asset
-            )
-            let output = AVAssetReaderVideoCompositionOutput(
-                videoTracks: [track],
-                videoSettings: [
+            // A plain track output, deliberately — no video composition.
+            //
+            // Rendering through an `AVVideoComposition` to bake in the rotation put the decode on a
+            // canvas whose size and layer-instruction transform have to agree. They did not: a
+            // 1080x1920 portrait clip came back as a 1080x1024 buffer with the real image
+            // pillarboxed inside it, and correcting the render size alone left the content
+            // positioned for the old canvas — the frame drawn off to one side, and the landmarks
+            // normalised against the black around it rather than against the athlete.
+            //
+            // The buffer is now exactly what the decoder produced, and the rotation travels
+            // alongside it as an orientation. Nothing re-renders, so nothing can be mispositioned.
+            let output = AVAssetReaderTrackOutput(
+                track: track,
+                outputSettings: [
                     kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
                 ]
             )
-            output.videoComposition = composition
             output.alwaysCopiesSampleData = false
+
+            let orientation = Self.orientation(for: try await track.load(.preferredTransform))
+            sourceOrientation = orientation
 
             guard reader.canAdd(output) else { throw CameraCaptureError.cannotAddVideoDataOutput }
             reader.add(output)
@@ -161,20 +174,22 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
             while !Task.isCancelled, let sampleBuffer = output.copyNextSampleBuffer() {
                 let presentation = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
 
-                if pacing == .realTime {
-                    // Hold each frame back so the clip plays at its own rate.
-                    let delay = start.addingTimeInterval(presentation).timeIntervalSinceNow
-                    if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
-                }
+                // Hold each frame back so the clip plays at its own rate. It falls behind rather
+                // than skipping when inference is slower than real time, so nothing is dropped.
+                let delay = start.addingTimeInterval(presentation).timeIntervalSinceNow
+                if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
 
                 guard !Task.isCancelled else { break }
 
-                sampleBufferHandler?(sampleBuffer, baseTimestampMilliseconds + Int(presentation * 1000))
+                // Rotate once, here, and everything downstream sees an upright frame — the model,
+                // the preview and the landmark coordinate space alike.
+                guard let decoded = CMSampleBufferGetImageBuffer(sampleBuffer),
+                      let upright = rotator.upright(decoded, orientation: orientation) else { continue }
 
-                if let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-                    await MainActor.run { [weak self] in
-                        self?.previewFrameHandler?(pixelBuffer)
-                    }
+                sampleBufferHandler?(upright, baseTimestampMilliseconds + Int(presentation * 1000))
+
+                await MainActor.run { [weak self] in
+                    self?.previewFrameHandler?(upright)
                 }
 
                 lastPresentation = presentation
@@ -196,4 +211,3 @@ final class VideoFileCaptureService: NSObject, CameraCaptureServicing {
         }
     }
 }
-#endif
