@@ -53,6 +53,9 @@ struct LiveAnalysisView: View {
                 .overlay(alignment: .bottomLeading) {
                     tuningReadout
                 }
+                .overlay {
+                    processingOverlay
+                }
 
             VStack(spacing: 12) {
                 if showsCueCard {
@@ -171,6 +174,38 @@ struct LiveAnalysisView: View {
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+    }
+
+    /// Covers the gap between the clip ending and the replay opening.
+    ///
+    /// Analysis runs over every captured frame and the movie file is still being written, so on a
+    /// long set there is a real wait here. Without this the last frame just sits there and the app
+    /// looks stalled rather than busy.
+    @ViewBuilder
+    private var processingOverlay: some View {
+        if viewModel.recordingState == .processing {
+            ZStack {
+                Color.black.opacity(0.55)
+
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(.white)
+                    Text("Analysing your set…")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text("Scoring every rep and building the replay.")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.75))
+                        .multilineTextAlignment(.center)
+                }
+                .padding(24)
+            }
+            .ignoresSafeArea()
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Analysing your set")
         }
     }
 

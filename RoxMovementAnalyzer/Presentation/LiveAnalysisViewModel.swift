@@ -64,6 +64,7 @@ final class LiveAnalysisViewModel {
     private var liveCounter = LiveMovementCounter(station: .wallBalls)
     private let repCuePlayer: RepCuePlaying
     private var recordingFinishTask: Task<Void, Never>?
+    private var analysisTask: Task<Void, Never>?
     private var cueHoldUntil: Date?
 
     /// How long a fault cue stays on screen before the standing cue returns.
@@ -191,6 +192,8 @@ final class LiveAnalysisViewModel {
             sessionScorecard = nil
             sessionVideoURL = nil
             sessionTimeline = nil
+            analysisTask?.cancel()
+            analysisTask = nil
             recordingState = .recording
             currentCue = feedbackGenerator.recordingCue(for: selectedStation)
         } catch {
@@ -200,22 +203,51 @@ final class LiveAnalysisViewModel {
 
     private func stopRecording() {
         cameraService.stopRecording()
-        finalizeAnalysis()
+
+        // The state changes *before* the work starts. Analysis used to run synchronously right
+        // here, so the screen sat frozen on the last frame and only reached `.processing` once it
+        // was already over — there was no moment at which anything could show progress.
+        recordingState = .processing
+        startAnalysis()
 
         // The movie file keeps writing after stopRecording() returns; wait for the delegate
         // rather than navigating to a video that does not exist yet.
-        recordingState = .processing
         startRecordingFinishTimeout()
     }
 
-    /// Turns the captured frames into the scorecard and replay timeline.
+    /// Turns the captured frames into the scorecard and replay timeline, off the main actor.
     ///
-    /// Shared by the user tapping stop and by a recording that stopped itself at the duration or
-    /// storage limit, so the set is analysed identically either way.
-    private func finalizeAnalysis() {
-        sessionScorecard = sessionAnalyzer.analyze(station: selectedStation, frames: capturedFrames)
-        sessionTimeline = SessionTimeline(frames: capturedFrames, station: selectedStation)
-        currentCue = feedbackGenerator.completedCue(for: selectedStation)
+    /// A long clip is thousands of frames and every analyzer runs over all of them, which is far
+    /// too much to do while the UI is trying to draw. Shared by the user tapping stop and by a
+    /// recording that stopped itself at the duration or storage limit, so the set is analysed
+    /// identically either way.
+    private func startAnalysis() {
+        let station = selectedStation
+        let frames = capturedFrames
+        let analyzer = sessionAnalyzer
+
+        analysisTask = Task { [weak self] in
+            let scorecard = await Task.detached(priority: .userInitiated) {
+                analyzer.analyze(station: station, frames: frames)
+            }.value
+            let timeline = await Task.detached(priority: .userInitiated) {
+                SessionTimeline(frames: frames, station: station)
+            }.value
+
+            guard let self, !Task.isCancelled else { return }
+            self.sessionScorecard = scorecard
+            self.sessionTimeline = timeline
+            self.currentCue = self.feedbackGenerator.completedCue(for: station)
+        }
+    }
+
+    /// Navigates once *both* the movie file and the analysis are done. Either can finish first.
+    private func finishSessionWhenReady() {
+        Task { [weak self] in
+            await self?.analysisTask?.value
+            guard let self, self.recordingState == .processing else { return }
+            self.finishSession()
+        }
     }
 
     /// Falls through to the scorecard if the capture delegate never reports back, so a stalled
@@ -225,7 +257,7 @@ final class LiveAnalysisViewModel {
         recordingFinishTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled, let self, self.recordingState == .processing else { return }
-            self.finishSession()
+            self.finishSessionWhenReady()
         }
     }
 
@@ -246,13 +278,14 @@ final class LiveAnalysisViewModel {
         // "Recording" forever with no scorecard.
         if recordingState == .recording {
             cameraService.stopRecording()
-            finalizeAnalysis()
-            finishSession()
+            recordingState = .processing
+            startAnalysis()
+            finishSessionWhenReady()
             return
         }
 
         guard recordingState == .processing else { return }
-        finishSession()
+        finishSessionWhenReady()
     }
 
     private func finishSession() {

@@ -54,6 +54,24 @@ final class RecordingLimitTests: XCTestCase {
         )
     }
 
+    /// Waits for a condition, since the scorecard and timeline are now built off the main actor.
+    /// Polls rather than sleeping a fixed interval so a fast machine is not made to wait.
+    @MainActor
+    private func waitUntil(
+        _ description: String,
+        timeout: TimeInterval = 3,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("timed out waiting for \(description)", file: file, line: line)
+    }
+
     func testRecordingThatStopsItselfStillProducesAScorecard() async {
         let service = FakeCaptureService()
         let viewModel = makeViewModel(service)
@@ -69,7 +87,10 @@ final class RecordingLimitTests: XCTestCase {
             viewModel.recordingState, .recording,
             "an AVFoundation-initiated stop must not leave the app stuck on Recording"
         )
-        XCTAssertEqual(viewModel.recordingState, .completed)
+
+        await waitUntil("the session to finish analysing") {
+            viewModel.recordingState == .completed
+        }
         XCTAssertNotNil(viewModel.sessionScorecard, "the set must still be analysed")
         XCTAssertNotNil(viewModel.sessionTimeline)
         XCTAssertEqual(viewModel.sessionVideoURL, url)
@@ -101,10 +122,13 @@ final class RecordingLimitTests: XCTestCase {
             viewModel.recordingState, .processing,
             "tapping stop waits for the file before navigating"
         )
-        XCTAssertNotNil(viewModel.sessionScorecard)
 
         service.simulateLimitReached(url: URL(fileURLWithPath: "/tmp/rox-test-session.mov"))
-        XCTAssertEqual(viewModel.recordingState, .completed)
+
+        await waitUntil("the session to finish analysing") {
+            viewModel.recordingState == .completed
+        }
+        XCTAssertNotNil(viewModel.sessionScorecard)
     }
 
     func testCapIsFiveMinutes() {

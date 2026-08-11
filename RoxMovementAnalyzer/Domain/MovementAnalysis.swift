@@ -185,17 +185,24 @@ enum LiveMovementCounter {
         }
     }
 
-    /// Movements begun, counted or not.
+    /// Movements that have been **resolved** — counted, or finished without counting.
     ///
-    /// Only meaningful where a movement can fail: a wall-ball squat that never broke parallel is an
-    /// attempt but not a rep, and seeing "5/6" tells the athlete they lost one to depth rather than
-    /// leaving them to wonder why the count stalled. Every rowing stroke counts, so attempts and
-    /// count are the same number and the ratio would say nothing.
+    /// Deliberately not the analyzer's raw attempt tally. That increments the instant a descent
+    /// begins, so a squat still on the way down would sit in the denominator as though it had
+    /// already been missed: 0/1 during the first rep, 1/2 during the second. The athlete has not
+    /// missed anything yet, and the badge should not say they have.
+    ///
+    /// A rep joins the denominator when it is counted (at depth, where a judge would call it) or
+    /// when it closes having never reached depth. So a set with one missed rep reads 5/6, and a
+    /// rep in progress does not move the number at all.
     var attempts: Int {
         switch self {
-        case .wallBalls(let analyzer): analyzer.attempts
-        case .rowing(let analyzer): analyzer.strokesSoFar
-        case .unsupported: 0
+        case .wallBalls(let analyzer):
+            analyzer.validRepsSoFar + analyzer.completedReps.filter { !$0.reachedDepth }.count
+        case .rowing(let analyzer):
+            analyzer.strokesSoFar
+        case .unsupported:
+            0
         }
     }
 

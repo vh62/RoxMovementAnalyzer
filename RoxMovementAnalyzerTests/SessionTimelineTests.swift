@@ -37,6 +37,14 @@ final class SessionTimelineTests: XCTestCase {
         }
     }
 
+    /// Four reps, all at legal depth.
+    private func cleanSession() -> [PoseFrame] {
+        var frames: [PoseFrame] = []
+        var t = 0
+        for _ in 0..<4 { frames += squatCycle(startMs: t, bottomDelta: 0.05); t += 300 }
+        return frames
+    }
+
     /// Three reps at legal depth followed by two deliberately shallow ones.
     private func mixedDepthSession() -> [PoseFrame] {
         var frames: [PoseFrame] = []
@@ -189,7 +197,26 @@ final class SessionTimelineTests: XCTestCase {
         let timeline = SessionTimeline(frames: mixedDepthSession(), station: .wallBalls)
 
         XCTAssertEqual(timeline.totalCount, 3)
-        XCTAssertGreaterThan(timeline.attempts(at: timeline.duration), timeline.totalCount)
+        XCTAssertEqual(
+            timeline.attempts(at: timeline.duration), 5,
+            "three good reps and two that never broke parallel reads 3/5"
+        )
+    }
+
+    /// A rep on the way down is not a miss.
+    ///
+    /// The denominator counts resolved reps only, so it never runs ahead of the numerator on a set
+    /// where nothing has been missed. Reading 0/1 mid-squat, then 1/2 on the next one, told the
+    /// athlete they were dropping every rep as they performed it.
+    func testAttemptsNeverLeadValidRepsOnACleanSet() {
+        let timeline = SessionTimeline(frames: cleanSession(), station: .wallBalls)
+
+        for step in stride(from: 0.0, through: timeline.duration, by: 0.02) {
+            XCTAssertEqual(
+                timeline.attempts(at: step), timeline.count(at: step),
+                "a clean set must never show a ratio at \(step)s"
+            )
+        }
     }
 
     func testEmptyTimelineIsSafe() {
