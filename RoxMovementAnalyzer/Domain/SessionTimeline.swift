@@ -12,15 +12,17 @@ struct SessionTimeline: Equatable {
     struct Entry: Equatable {
         let frame: PoseFrame
         let seconds: Double
-        let validReps: Int
-        /// When the most recent rep was counted, used to hold the "rep counted" callout on screen
-        /// for a readable moment rather than a single frame.
-        let lastRepCountedAt: Double?
+        /// The station's running tally at this moment — valid reps, or strokes. What it counts is
+        /// station-specific, which is why it is not named for either one.
+        let count: Int
+        /// When the most recent movement was counted, used to hold the callout on screen for a
+        /// readable moment rather than a single frame.
+        let lastCountedAt: Double?
 
-        /// Whether a rep was counted recently enough to still be worth calling out.
+        /// Whether a movement was counted recently enough to still be worth calling out.
         func isCelebratingRep(at seconds: Double, window: Double = 0.8) -> Bool {
-            guard let lastRepCountedAt else { return false }
-            return seconds - lastRepCountedAt <= window
+            guard let lastCountedAt else { return false }
+            return seconds - lastCountedAt <= window
         }
     }
 
@@ -32,56 +34,57 @@ struct SessionTimeline: Equatable {
     static let faultCalloutWindow: Double = 1.6
 
     private(set) var entries: [Entry]
-    /// Per-rep analysis for the session, empty for stations without rep analysis.
-    private(set) var reps: [WallBallRep]
+    /// The session's movement analysis, `.unsupported` for stations without an analyzer.
+    private(set) var analysis: StationAnalysis
+    /// Station-neutral view of the analysis, for the scrubber and the fault banner.
+    private(set) var movements: [CountedMovement]
 
     var isEmpty: Bool { entries.isEmpty }
 
-    /// Reps where at least one movement inefficiency was detected.
-    var faultedReps: [WallBallRep] { reps.filter { !$0.faults.isEmpty } }
+    /// Movements where at least one fault was detected.
+    var faultedMovements: [CountedMovement] { movements.filter { $0.fault != nil } }
 
     /// Length of the tracked portion of the session, in seconds.
     var duration: Double { entries.last?.seconds ?? 0 }
 
-    /// Total valid reps counted across the whole session.
-    var totalValidReps: Int { entries.last?.validReps ?? 0 }
+    /// The station's total count across the whole session.
+    var totalCount: Int { entries.last?.count ?? 0 }
 
     /// Builds a timeline from frames captured in chronological order.
     ///
     /// - Parameters:
     ///   - frames: pose frames in capture order.
-    ///   - station: drives whether rep counting applies (currently Wall Balls only).
+    ///   - station: selects the analyzer, if the station has one.
     init(frames: [PoseFrame], station: HyroxStation) {
         guard let firstTimestamp = frames.first?.timestampInMilliseconds else {
             self.entries = []
-            self.reps = []
+            self.analysis = .unsupported
+            self.movements = []
             return
         }
 
-        // The analyzer anchors on the same first frame, so its seconds share this timeline's origin.
-        self.reps = station == .wallBalls ? WallBallRepAnalyzer.analyze(frames: frames) : []
+        // The analyzers anchor on the same first frame, so their seconds share this timeline's origin.
+        self.analysis = StationAnalysis.analyze(station: station, frames: frames)
+        self.movements = analysis.countedMovements
 
-        let countsReps = station == .wallBalls
-        var counter = WallBallRepCounter()
-        var previousReps = 0
-        var lastRepCountedAt: Double?
+        var counter = LiveMovementCounter(station: station)
+        var previousCount = 0
+        var lastCountedAt: Double?
 
         self.entries = frames.map { frame in
             let seconds = Double(frame.timestampInMilliseconds - firstTimestamp) / 1000
 
-            if countsReps {
-                counter.process(frame)
-                if counter.result.validReps > previousReps {
-                    previousReps = counter.result.validReps
-                    lastRepCountedAt = seconds
-                }
+            counter.process(frame)
+            if counter.count > previousCount {
+                previousCount = counter.count
+                lastCountedAt = seconds
             }
 
             return Entry(
                 frame: frame,
                 seconds: seconds,
-                validReps: counter.result.validReps,
-                lastRepCountedAt: lastRepCountedAt
+                count: counter.count,
+                lastCountedAt: lastCountedAt
             )
         }
     }
@@ -100,28 +103,29 @@ struct SessionTimeline: Equatable {
         entry(at: seconds)?.frame
     }
 
-    /// Valid reps counted so far at `seconds`. Unlike `frame(at:)` this ignores the staleness
-    /// window — a tracking dropout should not make the running count fall back to zero.
-    func validReps(at seconds: Double) -> Int {
+    /// The station's tally at `seconds`. Unlike `frame(at:)` this ignores the staleness window — a
+    /// tracking dropout should not make the running count fall back to zero.
+    func count(at seconds: Double) -> Int {
         guard let index = indexOfEntry(at: seconds) else { return 0 }
-        return entries[index].validReps
+        return entries[index].count
     }
 
-    /// The fault worth calling out at `seconds` — the most recently finished faulted rep, held on
-    /// screen briefly so it is readable rather than flashing for a single frame.
-    func activeFault(at seconds: Double) -> WallBallFault? {
-        activeFaultedRep(at: seconds)?.faults.first
+    /// The fault worth calling out at `seconds` — the most recently finished faulted movement, held
+    /// on screen briefly so it is readable rather than flashing for a single frame.
+    func activeFault(at seconds: Double) -> FaultCallout? {
+        activeFaultedMovement(at: seconds)?.fault
     }
 
-    func activeFaultedRep(at seconds: Double) -> WallBallRep? {
-        faultedReps.last {
+    func activeFaultedMovement(at seconds: Double) -> CountedMovement? {
+        faultedMovements.last {
             seconds >= $0.endSeconds && seconds - $0.endSeconds <= Self.faultCalloutWindow
         }
     }
 
-    /// The rep in progress at `seconds`, for the tuning readout.
-    func rep(at seconds: Double) -> WallBallRep? {
-        reps.last { seconds >= $0.startSeconds && seconds <= $0.endSeconds + Self.faultCalloutWindow }
+    /// The movement in progress at `seconds`, for the tuning readout. Its `index` addresses the
+    /// matching record in `analysis` when the readout needs the station's own measurements.
+    func movement(at seconds: Double) -> CountedMovement? {
+        movements.last { seconds >= $0.startSeconds && seconds <= $0.endSeconds + Self.faultCalloutWindow }
     }
 
     /// Index of the last entry at or before `seconds`, via binary search over the sorted entries.

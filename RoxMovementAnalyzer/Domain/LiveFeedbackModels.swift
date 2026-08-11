@@ -12,14 +12,14 @@ protocol LiveFeedbackGenerating {
     func readyCue(for station: HyroxStation) -> LiveFeedbackCue
     func recordingCue(for station: HyroxStation) -> LiveFeedbackCue
     func completedCue(for station: HyroxStation) -> LiveFeedbackCue
-    /// Coaching cue for an inefficiency detected on the rep just finished.
-    func faultCue(for fault: WallBallFault, station: HyroxStation) -> LiveFeedbackCue
-    /// Shown when the hands leave frame during the throw, so release cannot be measured.
+    /// Coaching cue for a fault detected on the movement just finished.
+    func faultCue(for fault: FaultCallout, station: HyroxStation) -> LiveFeedbackCue
+    /// Shown when the hands leave frame, so the throw or the handle draw cannot be measured.
     func framingCue(for station: HyroxStation) -> LiveFeedbackCue
 }
 
 extension LiveFeedbackGenerating {
-    func faultCue(for fault: WallBallFault, station: HyroxStation) -> LiveFeedbackCue {
+    func faultCue(for fault: FaultCallout, station: HyroxStation) -> LiveFeedbackCue {
         LiveFeedbackCue(
             station: station,
             message: fault.liveMessage,

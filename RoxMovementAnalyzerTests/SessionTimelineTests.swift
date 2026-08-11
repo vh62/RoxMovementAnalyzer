@@ -131,19 +131,19 @@ final class SessionTimelineTests: XCTestCase {
 
         var previous = 0
         for step in stride(from: 0.0, through: timeline.duration, by: 0.02) {
-            let count = timeline.validReps(at: step)
+            let count = timeline.count(at: step)
             XCTAssertGreaterThanOrEqual(count, previous, "rep count went backwards at \(step)s")
             previous = count
         }
 
-        XCTAssertEqual(timeline.validReps(at: timeline.duration), 3)
-        XCTAssertEqual(timeline.totalValidReps, 3)
+        XCTAssertEqual(timeline.count(at: timeline.duration), 3)
+        XCTAssertEqual(timeline.totalCount, 3)
     }
 
     func testRepCalloutFadesAfterTheRep() throws {
         let timeline = SessionTimeline(frames: mixedDepthSession(), station: .wallBalls)
         let repMoment = try XCTUnwrap(
-            timeline.entries.first(where: { $0.lastRepCountedAt != nil })?.lastRepCountedAt
+            timeline.entries.first(where: { $0.lastCountedAt != nil })?.lastCountedAt
         )
 
         XCTAssertEqual(timeline.entry(at: repMoment)?.isCelebratingRep(at: repMoment), true)
@@ -158,13 +158,13 @@ final class SessionTimelineTests: XCTestCase {
         XCTAssertTrue(timeline.isEmpty)
         XCTAssertEqual(timeline.duration, 0)
         XCTAssertNil(timeline.frame(at: 0))
-        XCTAssertEqual(timeline.validReps(at: 3), 0)
+        XCTAssertEqual(timeline.count(at: 3), 0)
     }
 
     func testNonWallBallStationsDoNotCountReps() {
         let timeline = SessionTimeline(frames: mixedDepthSession(), station: .running)
 
-        XCTAssertEqual(timeline.totalValidReps, 0)
+        XCTAssertEqual(timeline.totalCount, 0)
         XCTAssertNotNil(timeline.frame(at: 0.05), "frames are still replayable")
     }
 

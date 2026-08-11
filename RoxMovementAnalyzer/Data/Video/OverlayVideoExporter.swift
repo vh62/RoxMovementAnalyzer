@@ -329,7 +329,7 @@ struct OverlayVideoExporter {
         renderer.draw(
             PoseOverlayRenderer.Frame(
                 pose: entry.frame,
-                validReps: entry.validReps,
+                count: entry.count,
                 justCountedRep: entry.isCelebratingRep(at: seconds),
                 fault: timeline.activeFault(at: seconds)
             ),

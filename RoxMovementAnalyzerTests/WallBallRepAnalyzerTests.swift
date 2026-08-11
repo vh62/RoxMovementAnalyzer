@@ -266,9 +266,9 @@ final class WallBallRepAnalyzerTests: XCTestCase {
         frames += faulted.frames
 
         let timeline = SessionTimeline(frames: frames, station: .wallBalls)
-        let faultedRep = try XCTUnwrap(timeline.faultedReps.first)
+        let faultedRep = try XCTUnwrap(timeline.faultedMovements.first)
 
-        XCTAssertEqual(timeline.reps.count, 3)
+        XCTAssertEqual(timeline.movements.count, 3)
         XCTAssertNotNil(timeline.activeFault(at: faultedRep.endSeconds + 0.2), "callout is held")
         XCTAssertNil(
             timeline.activeFault(at: faultedRep.endSeconds + 5),
@@ -278,6 +278,8 @@ final class WallBallRepAnalyzerTests: XCTestCase {
 
     func testNonWallBallStationsProduceNoReps() {
         let timeline = SessionTimeline(frames: session(reps: 2), station: .running)
-        XCTAssertTrue(timeline.reps.isEmpty)
+
+        XCTAssertTrue(timeline.movements.isEmpty)
+        XCTAssertEqual(timeline.analysis, .unsupported)
     }
 }

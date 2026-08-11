@@ -16,15 +16,18 @@ struct PoseOverlayRenderer {
 
     struct Frame {
         let pose: PoseFrame
-        let validReps: Int
-        /// Set on the frames where a rep was just counted, driving the "REP N — COUNTED" callout.
+        let count: Int
+        /// Set on the frames where a movement was just counted, driving the "REP N — COUNTED" callout.
         let justCountedRep: Bool
-        /// An inefficiency detected on the rep just finished, called out instead of the count.
-        var fault: WallBallFault?
+        /// A fault detected on the movement just finished, called out instead of the count.
+        var fault: FaultCallout?
     }
 
     let showsDepthGuide: Bool
     let requiresFullBody: Bool
+    /// What the badge is counting — "VALID REPS" for wall balls, "STROKES" for rowing. Undefaulted
+    /// so a new station cannot silently inherit another station's vocabulary.
+    let countNoun: String
 
     func draw(_ frame: Frame, in context: CGContext, size: CGSize) {
         let scale = max(size.height / Self.referenceHeight, 1)
@@ -42,12 +45,13 @@ struct PoseOverlayRenderer {
         drawLandmarks(pose, in: context, size: size, scale: scale)
         drawRepBadge(frame, in: context, size: size, scale: scale)
 
-        if showsDepthGuide {
-            if let fault = frame.fault {
-                drawFaultCallout(fault, in: context, size: size, scale: scale)
-            } else if frame.justCountedRep, let guide = PoseOverlayGeometry.depthGuide(for: pose) {
-                drawRepCallout(frame, guide: guide, in: context, size: size, scale: scale)
-            }
+        // The fault callout stands on its own. Only the "counted" callout needs the depth guide,
+        // because it quotes how far below parallel the athlete got.
+        if let fault = frame.fault {
+            drawFaultCallout(fault, in: context, size: size, scale: scale)
+        } else if showsDepthGuide, frame.justCountedRep,
+                  let guide = PoseOverlayGeometry.depthGuide(for: pose) {
+            drawRepCallout(frame, guide: guide, in: context, size: size, scale: scale)
         }
     }
 
@@ -106,14 +110,17 @@ struct PoseOverlayRenderer {
             let a = PoseOverlayGeometry.point(for: start, in: size, sourceAspectRatio: pose.sourceAspectRatio)
             let b = PoseOverlayGeometry.point(for: end, in: size, sourceAspectRatio: pose.sourceAspectRatio)
 
-            context.setStrokeColor(CGColor(gray: 0, alpha: 0.72))
-            context.setLineWidth(6 * scale)
+            // Matches the on-screen overlay: a thin dark line for contrast, a translucent white one
+            // on top. The skeleton is a reference for the athlete's form, not the subject of the
+            // frame, so it stays quiet enough to see the body through it.
+            context.setStrokeColor(CGColor(gray: 0, alpha: 0.28))
+            context.setLineWidth(3 * scale)
             context.move(to: a)
             context.addLine(to: b)
             context.strokePath()
 
-            context.setStrokeColor(CGColor(red: 1, green: 0.84, blue: 0.04, alpha: 1))
-            context.setLineWidth(4 * scale)
+            context.setStrokeColor(CGColor(gray: 1, alpha: 0.55))
+            context.setLineWidth(1.5 * scale)
             context.move(to: a)
             context.addLine(to: b)
             context.strokePath()
@@ -125,17 +132,14 @@ struct PoseOverlayRenderer {
             let position = PoseOverlayGeometry.point(
                 for: landmark, in: size, sourceAspectRatio: pose.sourceAspectRatio
             )
-            let radius = 4 * scale
+            let radius = 2 * scale
             let rect = CGRect(
                 x: position.x - radius, y: position.y - radius,
                 width: radius * 2, height: radius * 2
             )
 
-            context.setFillColor(CGColor(red: 1, green: 0.23, blue: 0.19, alpha: 1))
+            context.setFillColor(CGColor(gray: 1, alpha: 0.7))
             context.fillEllipse(in: rect)
-            context.setStrokeColor(CGColor(gray: 1, alpha: 1))
-            context.setLineWidth(1.5 * scale)
-            context.strokeEllipse(in: rect)
         }
     }
 
@@ -149,14 +153,14 @@ struct PoseOverlayRenderer {
         context.fillPath()
 
         drawText(
-            "\(frame.validReps)",
+            "\(frame.count)",
             at: CGPoint(x: origin.x + 14 * scale, y: origin.y + 8 * scale),
             fontSize: 34 * scale,
             color: CGColor(gray: 1, alpha: 1),
             in: context
         )
         drawText(
-            "VALID REPS",
+            countNoun,
             at: CGPoint(x: origin.x + 14 * scale, y: origin.y + 46 * scale),
             fontSize: 11 * scale,
             color: CGColor(gray: 1, alpha: 0.85),
@@ -173,7 +177,7 @@ struct PoseOverlayRenderer {
     ) {
         let text = String(
             format: "REP %d — COUNTED  ·  %.1f%% BELOW PARALLEL",
-            frame.validReps,
+            frame.count,
             max(guide.percentBelowParallel, 0)
         )
 
@@ -188,7 +192,7 @@ struct PoseOverlayRenderer {
     }
 
     private func drawFaultCallout(
-        _ fault: WallBallFault,
+        _ fault: FaultCallout,
         in context: CGContext,
         size: CGSize,
         scale: CGFloat
