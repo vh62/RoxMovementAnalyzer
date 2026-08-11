@@ -17,6 +17,8 @@ struct PoseOverlayRenderer {
     struct Frame {
         let pose: PoseFrame
         let count: Int
+        /// Attempts made, where a movement can fail. Nil where every one counts.
+        var attempts: Int?
         /// Set on the frames where a movement was just counted, driving the "REP N — COUNTED" callout.
         let justCountedRep: Bool
         /// A fault detected on the movement just finished, called out instead of the count.
@@ -152,8 +154,11 @@ struct PoseOverlayRenderer {
         context.addPath(CGPath(roundedRect: rect, cornerWidth: 12 * scale, cornerHeight: 12 * scale, transform: nil))
         context.fillPath()
 
+        let tally = frame.attempts.map { $0 > frame.count ? "\(frame.count)/\($0)" : "\(frame.count)" }
+            ?? "\(frame.count)"
+
         drawText(
-            "\(frame.count)",
+            tally,
             at: CGPoint(x: origin.x + 14 * scale, y: origin.y + 8 * scale),
             fontSize: 34 * scale,
             color: CGColor(gray: 1, alpha: 1),

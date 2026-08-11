@@ -330,6 +330,7 @@ struct OverlayVideoExporter {
             PoseOverlayRenderer.Frame(
                 pose: entry.frame,
                 count: entry.count,
+                attempts: entry.attempts,
                 justCountedRep: entry.isCelebratingRep(at: seconds),
                 fault: timeline.activeFault(at: seconds)
             ),

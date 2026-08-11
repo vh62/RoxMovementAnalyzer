@@ -183,6 +183,15 @@ final class SessionTimelineTests: XCTestCase {
         )
     }
 
+    /// A shallow squat is an attempt that did not become a rep, which is what makes "5/6" worth
+    /// showing: the count stalling on its own looks like the tracker failing.
+    func testWallBallAttemptsExceedValidRepsWhenOneIsShallow() {
+        let timeline = SessionTimeline(frames: mixedDepthSession(), station: .wallBalls)
+
+        XCTAssertEqual(timeline.totalCount, 3)
+        XCTAssertGreaterThan(timeline.attempts(at: timeline.duration), timeline.totalCount)
+    }
+
     func testEmptyTimelineIsSafe() {
         let timeline = SessionTimeline(frames: [], station: .wallBalls)
 

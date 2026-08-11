@@ -327,6 +327,7 @@ struct LiveAnalysisView: View {
         if viewModel.recordingState == .recording, viewModel.showsLiveRepCount {
             RepCountBadge(
                 count: viewModel.liveRepCount,
+                attempts: viewModel.liveAttemptCount,
                 noun: viewModel.selectedStation.countNoun
             )
             .padding(.top, 72)

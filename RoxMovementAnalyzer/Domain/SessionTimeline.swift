@@ -15,6 +15,8 @@ struct SessionTimeline: Equatable {
         /// The station's running tally at this moment — valid reps, or strokes. What it counts is
         /// station-specific, which is why it is not named for either one.
         let count: Int
+        /// Movements begun by this moment, counted or not. Equal to `count` where nothing can fail.
+        let attempts: Int
         /// When the most recent movement was counted, used to hold the callout on screen for a
         /// readable moment rather than a single frame.
         let lastCountedAt: Double?
@@ -84,6 +86,7 @@ struct SessionTimeline: Equatable {
                 frame: frame,
                 seconds: seconds,
                 count: counter.count,
+                attempts: counter.attempts,
                 lastCountedAt: lastCountedAt
             )
         }
@@ -101,6 +104,12 @@ struct SessionTimeline: Equatable {
     /// The pose to draw at `seconds`, if any.
     func frame(at seconds: Double) -> PoseFrame? {
         entry(at: seconds)?.frame
+    }
+
+    /// Movements begun by `seconds`, counted or not.
+    func attempts(at seconds: Double) -> Int {
+        guard let index = indexOfEntry(at: seconds) else { return 0 }
+        return entries[index].attempts
     }
 
     /// The station's tally at `seconds`. Unlike `frame(at:)` this ignores the staleness window — a

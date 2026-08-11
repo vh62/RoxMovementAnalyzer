@@ -27,6 +27,9 @@ final class LiveAnalysisViewModel {
     var activeCameraPosition: CameraPosition = .back
     var sessionScorecard: WorkoutScorecard?
     var liveRepCount = 0
+    /// Attempts so far, for stations where a movement can fail. Nil elsewhere, so the badge shows a
+    /// bare count rather than a ratio that is always 1:1.
+    var liveAttemptCount: Int?
 
     /// The recorded movie for the session just captured, once it has finished writing.
     var sessionVideoURL: URL?
@@ -181,6 +184,7 @@ final class LiveAnalysisViewModel {
             liveCounter = LiveMovementCounter(station: selectedStation)
             hasLoggedFrameLimit = false
             liveRepCount = 0
+            liveAttemptCount = nil
             shallowRepCueAllowedAt = .distantPast
             latestAnalysis = .unsupported
             cueHoldUntil = nil
@@ -317,6 +321,7 @@ final class LiveAnalysisViewModel {
             let previousCompleted = liveCounter.completedMovements.count
             liveCounter.process(poseFrame)
             liveRepCount = liveCounter.count
+            liveAttemptCount = selectedStation.hasNoRepRule ? liveCounter.attempts : nil
             latestAnalysis = liveCounter.analysis
 
             let completed = liveCounter.completedMovements

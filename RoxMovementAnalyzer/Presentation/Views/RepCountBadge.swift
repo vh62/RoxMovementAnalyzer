@@ -6,13 +6,22 @@ import SwiftUI
 /// the depth rule, while rowing counts strokes, every one of which counts.
 struct RepCountBadge: View {
     let count: Int
+    /// Attempts made, when the station has a rule a movement can fail. Shown as "5/6" so a rep lost
+    /// to depth is visible at a glance instead of the count appearing to stall. Nil where every
+    /// movement counts, since the ratio would always be 1:1 and say nothing.
+    var attempts: Int?
     /// No default on purpose. A default would be one station's word, and the wrong one would then
     /// reach the screen silently rather than failing to compile.
     let noun: String
 
+    private var display: String {
+        guard let attempts, attempts > count else { return "\(count)" }
+        return "\(count)/\(attempts)"
+    }
+
     var body: some View {
         VStack(spacing: 2) {
-            Text("\(count)")
+            Text(display)
                 .font(.system(size: 46, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .contentTransition(.numericText())
@@ -24,15 +33,15 @@ struct RepCountBadge: View {
         .padding(.vertical, 12)
         .background(.black.opacity(0.55))
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .animation(.snappy, value: count)
+        .animation(.snappy, value: display)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(count) \(noun.lowercased())")
+        .accessibilityLabel(attempts.map { "\(count) of \($0) \(noun.lowercased())" } ?? "\(count) \(noun.lowercased())")
     }
 }
 
 #Preview("Rep Count Badge") {
     ZStack {
         Color.black
-        RepCountBadge(count: 12, noun: HyroxStation.rowing.countNoun)
+        RepCountBadge(count: 12, attempts: 14, noun: HyroxStation.wallBalls.countNoun)
     }
 }

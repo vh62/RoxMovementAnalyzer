@@ -185,6 +185,20 @@ enum LiveMovementCounter {
         }
     }
 
+    /// Movements begun, counted or not.
+    ///
+    /// Only meaningful where a movement can fail: a wall-ball squat that never broke parallel is an
+    /// attempt but not a rep, and seeing "5/6" tells the athlete they lost one to depth rather than
+    /// leaving them to wonder why the count stalled. Every rowing stroke counts, so attempts and
+    /// count are the same number and the ratio would say nothing.
+    var attempts: Int {
+        switch self {
+        case .wallBalls(let analyzer): analyzer.attempts
+        case .rowing(let analyzer): analyzer.strokesSoFar
+        case .unsupported: 0
+        }
+    }
+
     /// Records finished so far. Wall balls closes a rep at the catch that follows the throw; rowing
     /// closes a stroke at the following catch, so both lag the tally.
     var completedMovements: [CountedMovement] {

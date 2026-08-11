@@ -96,6 +96,7 @@ struct SessionPlaybackView: View {
                 if station.hasMovementAnalysis {
                     RepCountBadge(
                         count: timeline.count(at: currentTime),
+                        attempts: station.hasNoRepRule ? timeline.attempts(at: currentTime) : nil,
                         noun: station.countNoun
                     )
                     .padding(.top, 16)

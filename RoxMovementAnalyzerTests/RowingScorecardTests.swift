@@ -49,6 +49,15 @@ final class RowingScorecardTests: XCTestCase {
         )
     }
 
+    func testRowingAttemptsMatchTheStrokeCount() {
+        let timeline = SessionTimeline(frames: RowingFixture.session(), station: .rowing)
+
+        XCTAssertEqual(
+            timeline.attempts(at: timeline.duration), timeline.totalCount,
+            "every stroke counts, so a ratio would always be 1:1 and tell the athlete nothing"
+        )
+    }
+
     // MARK: - Scorecard
 
     func testCleanPieceScoresWellAndRaisesNoAlerts() {
