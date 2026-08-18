@@ -68,6 +68,48 @@ final class OverlayScalingModeTests: XCTestCase {
         }
     }
 
+    // MARK: - What the skeleton draws
+
+    /// The overlay is a form reference, so every bone drawn must connect joints it also draws.
+    func testEveryConnectionJoinsDrawnLandmarks() {
+        for (start, end) in PoseOverlayGeometry.connections {
+            XCTAssertTrue(
+                start.isDrawnInOverlay && end.isDrawnInOverlay,
+                "\(start)-\(end) draws a bone to a landmark the overlay hides"
+            )
+        }
+    }
+
+    func testFaceFingersAndFeetAreNotDrawn() {
+        let hidden: Set<PoseLandmarkName> = [
+            .nose, .leftEyeInner, .leftEye, .leftEyeOuter,
+            .rightEyeInner, .rightEye, .rightEyeOuter,
+            .leftEar, .rightEar, .mouthLeft, .mouthRight,
+            .leftThumb, .rightThumb, .leftIndex, .rightIndex,
+            .leftPinky, .rightPinky,
+            .leftHeel, .rightHeel, .leftFootIndex, .rightFootIndex
+        ]
+
+        for name in PoseLandmarkName.allCases {
+            XCTAssertEqual(
+                name.isDrawnInOverlay, !hidden.contains(name),
+                "\(name) is on the wrong side of the drawn/hidden split"
+            )
+        }
+    }
+
+    /// Every joint a measurement reads must keep drawing — the wrist and ankle especially, since
+    /// the fan of landmarks beyond each of them is what was removed.
+    func testMeasuredJointsAreStillDrawn() {
+        let measured: [PoseLandmarkName] = [
+            .leftShoulder, .rightShoulder, .leftHip, .rightHip,
+            .leftKnee, .rightKnee, .leftAnkle, .rightAnkle,
+            .leftElbow, .rightElbow, .leftWrist, .rightWrist
+        ]
+
+        XCTAssertTrue(measured.allSatisfy(\.isDrawnInOverlay))
+    }
+
     func testFillModeIsUnchangedFromTheOriginalMapping() {
         // Regression cover: the camera path must map exactly as it did before content modes existed.
         let point = PoseOverlayGeometry.point(

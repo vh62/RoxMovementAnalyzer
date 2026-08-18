@@ -20,28 +20,9 @@ enum PoseOverlayGeometry {
         (.leftHip, .leftKnee),
         (.leftKnee, .leftAnkle),
         (.rightHip, .rightKnee),
-        (.rightKnee, .rightAnkle),
-        (.leftAnkle, .leftHeel),
-        (.leftHeel, .leftFootIndex),
-        (.leftAnkle, .leftFootIndex),
-        (.rightAnkle, .rightHeel),
-        (.rightHeel, .rightFootIndex),
-        (.rightAnkle, .rightFootIndex),
-        (.leftWrist, .leftThumb),
-        (.leftWrist, .leftIndex),
-        (.leftWrist, .leftPinky),
-        (.leftIndex, .leftPinky),
-        (.rightWrist, .rightThumb),
-        (.rightWrist, .rightIndex),
-        (.rightWrist, .rightPinky),
-        (.rightIndex, .rightPinky),
-        (.nose, .leftEyeInner),
-        (.leftEyeInner, .leftEye),
-        (.leftEye, .leftEyeOuter),
-        (.nose, .rightEyeInner),
-        (.rightEyeInner, .rightEye),
-        (.rightEye, .rightEyeOuter),
-        (.mouthLeft, .mouthRight)
+        (.rightKnee, .rightAnkle)
+        // Twelve bones: shoulders, arms, torso, hips, legs — and nothing past the wrist or ankle.
+        // See `PoseLandmarkName.isDrawnInOverlay` for why the face, fingers and feet are left out.
     ]
 
     /// How the video is fitted into its container — and therefore how landmarks map onto it.

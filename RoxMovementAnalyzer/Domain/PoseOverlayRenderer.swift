@@ -130,7 +130,7 @@ struct PoseOverlayRenderer {
     }
 
     private func drawLandmarks(_ pose: PoseFrame, in context: CGContext, size: CGSize, scale: CGFloat) {
-        for landmark in pose.landmarks where landmark.isVisible {
+        for landmark in pose.landmarks where landmark.isVisible && landmark.name.isDrawnInOverlay {
             let position = PoseOverlayGeometry.point(
                 for: landmark, in: size, sourceAspectRatio: pose.sourceAspectRatio
             )

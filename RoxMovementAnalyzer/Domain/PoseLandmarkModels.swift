@@ -89,6 +89,36 @@ struct PoseLandmark: Equatable {
     }
 }
 
+extension PoseLandmarkName {
+    /// Whether the overlay draws this landmark.
+    ///
+    /// MediaPipe returns all 33 because BlazePose always does. Two groups are excluded because
+    /// nothing in the app reads them — not squat depth, not the rowing stroke sequence, not the
+    /// viewpoint check — and each one covers part of the athlete the overlay has no reason to hide:
+    ///
+    /// - **The face**: nose, eyes, ears, mouth. Eleven dots on the head, which is what makes a
+    ///   side-on athlete hardest to recognise in their own footage.
+    /// - **Finger and foot detail**: thumb, index, pinky, heel, foot index. A fan at the end of
+    ///   each hand and foot, right where an athlete looks to check their stance.
+    ///
+    /// The **wrist** and **ankle** are kept, because both are load-bearing rather than decorative.
+    /// The wrist stands in for the ball and the handle; the ankle carries rowing's knee angle, its
+    /// facing check and every horizontal offset, and gates `hasFullBody` for both stations.
+    var isDrawnInOverlay: Bool {
+        switch self {
+        case .nose, .leftEyeInner, .leftEye, .leftEyeOuter,
+             .rightEyeInner, .rightEye, .rightEyeOuter,
+             .leftEar, .rightEar, .mouthLeft, .mouthRight,
+             .leftThumb, .rightThumb, .leftIndex, .rightIndex,
+             .leftPinky, .rightPinky,
+             .leftHeel, .rightHeel, .leftFootIndex, .rightFootIndex:
+            false
+        default:
+            true
+        }
+    }
+}
+
 enum PoseLandmarkName: Int, CaseIterable {
     case nose = 0
     case leftEyeInner = 1

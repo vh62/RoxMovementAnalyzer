@@ -626,7 +626,7 @@ struct PoseOverlayView: View {
 
     private func drawLandmarks(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
         for landmark in poseFrame.landmarks {
-            guard landmark.isVisible else { continue }
+            guard landmark.isVisible, landmark.name.isDrawnInOverlay else { continue }
             let position = point(for: landmark, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio)
             let rect = CGRect(x: position.x - 2, y: position.y - 2, width: 4, height: 4)
             context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.7)))
