@@ -185,6 +185,14 @@ struct SessionPlaybackView: View {
                         readoutRow("speed", pull.peakHandSpeed.map { String(format: "%.1f", $0) } ?? "—")
                         readoutRow("hands", pull.handsTracked ? "tracked" : "lost")
                     }
+                case .burpees(let reps):
+                    if let rep = reps.first(where: { $0.index == movement.index }) {
+                        Text("REP \(rep.index + 1) · \(rep.viewpoint.rawValue)")
+                            .font(.caption2.weight(.black))
+                        readoutRow("toe→hand", rep.handsAheadOfFrontToe.map { String(format: "%+.2f", $0) } ?? "—")
+                        readoutRow("jump", rep.jumpDistance.map { String(format: "%.2f", $0) } ?? "—")
+                        readoutRow("rate", rep.repRate.map { String(format: "%.1f/min", $0) } ?? "—")
+                    }
                 case .unsupported:
                     EmptyView()
                 }

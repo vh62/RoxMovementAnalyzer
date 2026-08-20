@@ -48,6 +48,7 @@ enum StationAnalysis: Equatable {
     case wallBalls([WallBallRep])
     case rowing([RowStroke])
     case skiErg([SkiPull])
+    case burpees([BurpeeRep])
     /// No analyzer exists for this station yet. The session still has frames and tracking coverage;
     /// nothing is counted and nothing is faulted.
     case unsupported
@@ -57,6 +58,7 @@ enum StationAnalysis: Equatable {
         case .wallBalls: .wallBalls(WallBallRepAnalyzer.analyze(frames: frames))
         case .rowing: .rowing(RowStrokeAnalyzer.analyze(frames: frames))
         case .skiErg: .skiErg(SkiPullAnalyzer.analyze(frames: frames))
+        case .burpeeBroadJumps: .burpees(BurpeeRepAnalyzer.analyze(frames: frames))
         default: .unsupported
         }
     }
@@ -91,6 +93,20 @@ enum StationAnalysis: Equatable {
                     counted: true,
                     faults: $0.faults.map(\.callout),
                     calloutSeconds: $0.finishSeconds
+                )
+            }
+        case .burpees(let reps):
+            reps.map {
+                CountedMovement(
+                    id: $0.index, index: $0.index,
+                    startSeconds: $0.startSeconds, endSeconds: $0.endSeconds,
+                    counted: $0.isValid,
+                    faults: $0.faults.map(\.callout),
+                    // The take-off. Chest height above the feet peaks at full extension, which for a
+                    // burpee broad jump is the moment the athlete leaves the ground — and it sits
+                    // between the two corridor moments, so it is the frame worth jumping to whichever
+                    // rule fired.
+                    calloutSeconds: $0.topSeconds
                 )
             }
         case .unsupported:
@@ -189,6 +205,18 @@ extension SkiFault {
     }
 }
 
+extension BurpeeFault {
+    var callout: FaultCallout {
+        FaultCallout(
+            title: title,
+            liveMessage: liveMessage,
+            coachingDetail: coachingDetail,
+            severity: severity,
+            kindIdentifier: kind.rawValue
+        )
+    }
+}
+
 extension RowingFault {
     var callout: FaultCallout {
         FaultCallout(
@@ -212,6 +240,7 @@ enum LiveMovementCounter {
     case wallBalls(WallBallRepAnalyzer)
     case rowing(RowStrokeAnalyzer)
     case skiErg(SkiPullAnalyzer)
+    case burpees(BurpeeRepAnalyzer)
     case unsupported
 
     init(station: HyroxStation) {
@@ -219,6 +248,7 @@ enum LiveMovementCounter {
         case .wallBalls: self = .wallBalls(WallBallRepAnalyzer())
         case .rowing: self = .rowing(RowStrokeAnalyzer())
         case .skiErg: self = .skiErg(SkiPullAnalyzer())
+        case .burpeeBroadJumps: self = .burpees(BurpeeRepAnalyzer())
         default: self = .unsupported
         }
     }
@@ -234,6 +264,9 @@ enum LiveMovementCounter {
         case .skiErg(var analyzer):
             analyzer.process(frame)
             self = .skiErg(analyzer)
+        case .burpees(var analyzer):
+            analyzer.process(frame)
+            self = .burpees(analyzer)
         case .unsupported:
             break
         }
@@ -245,6 +278,7 @@ enum LiveMovementCounter {
         case .wallBalls(let analyzer): analyzer.validRepsSoFar
         case .rowing(let analyzer): analyzer.strokesSoFar
         case .skiErg(let analyzer): analyzer.pullsSoFar
+        case .burpees(let analyzer): analyzer.validRepsSoFar
         case .unsupported: 0
         }
     }
@@ -280,6 +314,12 @@ enum LiveMovementCounter {
             analyzer.strokesSoFar
         case .skiErg(let analyzer):
             analyzer.pullsSoFar
+        case .burpees(let analyzer):
+            // Every closed rep, valid or not. Unlike wall balls there is no mid-rep moment where a
+            // burpee becomes valid — rule 6 is read at the very end — so a rep joins the numerator
+            // and the denominator together, when it closes. The badge lags by one rep and never
+            // shows a rep as missed while it is still being performed.
+            analyzer.completedReps.count
         case .unsupported:
             0
         }
@@ -296,6 +336,7 @@ enum LiveMovementCounter {
         case .wallBalls(let analyzer): .wallBalls(analyzer.completedReps)
         case .rowing(let analyzer): .rowing(analyzer.completedStrokes)
         case .skiErg(let analyzer): .skiErg(analyzer.completedPulls)
+        case .burpees(let analyzer): .burpees(analyzer.completedReps)
         case .unsupported: .unsupported
         }
     }

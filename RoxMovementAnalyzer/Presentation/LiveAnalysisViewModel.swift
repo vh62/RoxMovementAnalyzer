@@ -415,6 +415,9 @@ final class LiveAnalysisViewModel {
         case .skiErg(let pulls):
             guard let pull = pulls.first(where: { $0.index == movement.index }) else { return false }
             return !pull.handsTracked
+        case .burpees(let reps):
+            guard let rep = reps.first(where: { $0.index == movement.index }) else { return false }
+            return !rep.handsTracked
         case .unsupported:
             return false
         }

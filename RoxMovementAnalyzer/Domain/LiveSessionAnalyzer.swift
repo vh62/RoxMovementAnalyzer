@@ -38,6 +38,7 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
         case .wallBalls: return wallBallScore(frames: frames)
         case .rowing: return rowingScore(frames: frames)
         case .skiErg: return skiErgScore(frames: frames)
+        case .burpeeBroadJumps: return burpeeScore(frames: frames)
         default: break
         }
 
@@ -340,6 +341,108 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
                 station: .skiErg,
                 kindOrder: SkiFault.Kind.allCases.map(\.rawValue),
                 noun: "pulls"
+            )
+        )
+    }
+
+    /// Rule compliance over a set of burpee broad jumps.
+    ///
+    /// Scored the way wall balls is rather than the way the ergs are: §8.4 gives this station a
+    /// judging standard, so a rep either counts or it does not, and the score is the share that
+    /// counted. Unlike wall balls there are four ways to fail rather than one, so the headline number
+    /// is valid reps over attempts and the alerts say which rule cost them.
+    private func burpeeScore(frames: [PoseFrame]) -> StationScore {
+        let reps = BurpeeRepAnalyzer.analyze(frames: frames)
+
+        guard !reps.isEmpty else {
+            return StationScore(
+                station: .burpeeBroadJumps,
+                score: 0,
+                status: .needsWork,
+                primaryFeedback: "No burpee broad jumps were detected. Film from the side, square to "
+                    + "the direction you travel, with your hands and feet in frame on the floor. "
+                    + "Expect to capture three or four reps before you jump out of shot — this is a "
+                    + "technique check on a few reps, not a counter for the full 80 m.",
+                metrics: [
+                    MetricResult(label: "Valid reps", value: "0", status: .needsWork),
+                    MetricResult(label: "Frames analyzed", value: "\(frames.count)", status: .caution)
+                ],
+                alerts: []
+            )
+        }
+
+        let valid = reps.filter(\.isValid).count
+        let accuracy = Double(valid) / Double(reps.count)
+        let score = Int((accuracy * 100).rounded())
+
+        var metrics: [MetricResult] = [
+            MetricResult(label: "Valid reps", value: "\(valid)", status: depthStatus(accuracy)),
+            MetricResult(label: "Total reps", value: "\(reps.count)", status: .raceReady),
+            MetricResult(label: "Rule compliance", value: "\(score)%", status: depthStatus(accuracy))
+        ]
+
+        if let rate = mean(reps.compactMap(\.repRate)) {
+            metrics.append(
+                MetricResult(label: "Rep rate", value: String(format: "%.0f/min", rate), status: .raceReady)
+            )
+        }
+
+        // Reported, never judged. Rule 9 leaves the length of each broad jump to the racer, so this
+        // carries no status of its own — but it is the number that decides how many reps 80 m costs,
+        // which makes it the most useful thing on the card that is not a rule.
+        if let distance = mean(reps.compactMap(\.jumpDistance)) {
+            metrics.append(
+                MetricResult(
+                    label: "Jump distance",
+                    value: String(format: "%.1f torso lengths", distance),
+                    status: .raceReady
+                )
+            )
+        }
+
+        // Say why rather than silently omitting the rules a front-on camera cannot judge.
+        if let viewpoint = reps.last?.viewpoint, !viewpoint.supportsReachMeasurement {
+            metrics.append(
+                MetricResult(label: "Hand and foot rules", value: "Needs side view", status: .caution)
+            )
+        } else {
+            let corridorBreaches = reps.filter {
+                $0.hasFault(.feetPastFingertips) || $0.hasFault(.handsTooFarForward)
+            }.count
+            metrics.append(
+                MetricResult(
+                    label: "Hand and foot rules",
+                    value: "\(reps.count - corridorBreaches) of \(reps.count)",
+                    status: corridorBreaches == 0
+                        ? .strong
+                        : (corridorBreaches > reps.count / 3 ? .needsWork : .caution)
+                )
+            )
+        }
+
+        let chestMisses = reps.filter { $0.hasFault(.chestNotDown) }.count
+        metrics.append(
+            MetricResult(
+                label: "Chest contact",
+                value: "\(reps.count - chestMisses) of \(reps.count)",
+                status: chestMisses == 0 ? .strong : (chestMisses > reps.count / 3 ? .needsWork : .caution)
+            )
+        )
+
+        return StationScore(
+            station: .burpeeBroadJumps,
+            score: score,
+            status: depthStatus(accuracy),
+            primaryFeedback: "\(valid) of \(reps.count) burpee broad jumps met every rule checked. "
+                + "Judged against §8.4 of the rulebook — the hand and foot placement rules and "
+                + "chest contact. The 5 cm foot-stagger tolerance is not checked: it is finer than "
+                + "pose tracking can resolve.",
+            metrics: metrics,
+            alerts: alerts(
+                for: StationAnalysis.burpees(reps).countedMovements,
+                station: .burpeeBroadJumps,
+                kindOrder: BurpeeFault.Kind.allCases.map(\.rawValue),
+                noun: "reps"
             )
         )
     }

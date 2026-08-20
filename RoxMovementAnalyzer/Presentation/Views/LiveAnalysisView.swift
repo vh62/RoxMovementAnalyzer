@@ -411,6 +411,14 @@ struct LiveAnalysisView: View {
                         Text("dip    \(pull.midDriveDip.map { String(format: "%.2f", $0) } ?? "—")")
                         Text("hands  \(pull.handsTracked ? "tracked" : "lost")")
                     }
+                case .burpees(let reps):
+                    if let rep = reps.last {
+                        Text("REP \(rep.index + 1) · \(rep.viewpoint.rawValue)")
+                            .font(.caption2.weight(.black))
+                        Text("toe→hand \(rep.handsAheadOfFrontToe.map { String(format: "%+.2f", $0) } ?? "—")")
+                        Text("jump     \(rep.jumpDistance.map { String(format: "%.2f", $0) } ?? "—")")
+                        Text("rate     \(rep.repRate.map { String(format: "%.1f/min", $0) } ?? "—")")
+                    }
                 case .unsupported:
                     EmptyView()
                 }
