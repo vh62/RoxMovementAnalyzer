@@ -68,6 +68,17 @@ struct WallBallRepAnalyzer {
     private var openRep: OpenRep?
     private var armSamples: [ArmSample] = []
     private var lastViewpoint: CameraViewpoint = .unknown
+    private var sideVote = NearSideVote(voteFrames: WallBallThresholds.default.sideVoteFrames)
+
+    /// The side the overlay should draw, or nil to draw both.
+    ///
+    /// Gated on `lastViewpoint` rather than a modal tally, which is what this analyzer already uses:
+    /// for a standing athlete the shoulder-to-torso ratio does not oscillate the way a seated rower's
+    /// does, so the most recent reading is representative.
+    var profileSide: BodySide? {
+        guard lastViewpoint.supportsReachMeasurement else { return nil }
+        return sideVote.confidentSide
+    }
 
     // MARK: - Frame intake
 
@@ -83,6 +94,10 @@ struct WallBallRepAnalyzer {
 
         let viewpoint = frame.viewpoint(thresholds: thresholds.viewpoint)
         if viewpoint != .unknown { lastViewpoint = viewpoint }
+
+        // Wall balls takes no side for *measurement* — depth reads whichever hip and knee are visible
+        // — so this exists purely to tell the overlay which half of a profile athlete is real.
+        sideVote.observe(frame)
 
         recordArmSample(from: frame, at: seconds)
 

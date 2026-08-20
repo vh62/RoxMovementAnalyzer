@@ -65,6 +65,11 @@ struct WallBallThresholds: Equatable {
 
     /// Where the camera-angle classification divides. Shared with every other station rather than
     /// owned here — see `ViewpointThresholds`.
+    /// Frames of visibility comparison before the near side is latched — half a second, matching both
+    /// ergs. Used only to decide which side of the skeleton to draw; no wall-ball measurement takes a
+    /// side, because depth is read from whichever hip and knee are visible.
+    var sideVoteFrames = 15
+
     var viewpoint = ViewpointThresholds.default
 
     /// Shoulder width ÷ torso length below this reads as a side-on view.

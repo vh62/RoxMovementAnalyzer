@@ -127,6 +127,7 @@ struct RowStrokeAnalyzer {
             minimumSamples: thresholds.minScaleSamples,
             outlierTolerance: thresholds.scaleOutlierTolerance
         )
+        self.sideVote = NearSideVote(voteFrames: thresholds.sideVoteFrames)
     }
 
     // MARK: - Frame intake
@@ -194,14 +195,7 @@ struct RowStrokeAnalyzer {
             }
         }
 
-        if latchedSide == nil {
-            leftConfidence += frame.sagittalConfidence(.left)
-            rightConfidence += frame.sagittalConfidence(.right)
-            sideVotes += 1
-            if sideVotes >= thresholds.sideVoteFrames {
-                latchedSide = rightConfidence > leftConfidence ? .right : .left
-            }
-        }
+        sideVote.observe(frame)
 
         if let torso = frame.sagittalTorsoLength { scale.observe(torso) }
 
@@ -209,12 +203,17 @@ struct RowStrokeAnalyzer {
         if viewpoint != .unknown { viewpointTally[viewpoint, default: 0] += 1 }
     }
 
-    /// The side to measure. Before the vote settles this follows whichever side is currently ahead,
-    /// so analysis is not stalled for the first half-second.
-    private var nearSide: BodySide? {
-        if let latchedSide { return latchedSide }
-        guard sideVotes > 0 else { return nil }
-        return rightConfidence > leftConfidence ? .right : .left
+    private var nearSide: BodySide? { sideVote.side }
+
+    /// The side the overlay should draw, or nil to draw both.
+    ///
+    /// Stricter than `nearSide` in two ways, because drawing may decline where measuring may not: the
+    /// vote must have won by a margin, and the camera must actually be beside the athlete. Gated on
+    /// the same `supportsReachMeasurement` the horizontal measurements use, so the skeleton and the
+    /// numbers agree about whether this is a profile shot.
+    var profileSide: BodySide? {
+        guard modalViewpoint.supportsReachMeasurement else { return nil }
+        return sideVote.confidentSide
     }
 
     /// The modal viewpoint over the session, not the most recent one.
@@ -597,10 +596,7 @@ struct RowStrokeAnalyzer {
     private var scale: ScaleReference
     private var facingTally = 0
     private var latchedFacing: Facing?
-    private var leftConfidence: Double = 0
-    private var rightConfidence: Double = 0
-    private var sideVotes = 0
-    private var latchedSide: BodySide?
+    private var sideVote: NearSideVote
     private var viewpointTally: [CameraViewpoint: Int] = [:]
 
     private var kneeWindow: [Double] = []
