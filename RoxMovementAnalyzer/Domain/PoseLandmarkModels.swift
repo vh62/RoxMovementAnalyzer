@@ -101,6 +101,13 @@ extension PoseLandmarkName {
     /// - **Finger and foot detail**: thumb, index, pinky, heel, foot index. A fan at the end of
     ///   each hand and foot, right where an athlete looks to check their stance.
     ///
+    /// **Burpee broad jumps break the "nothing reads them" half of that.** Rules 5 and 6 are judged on
+    /// the fingertip and the toe — `.leftIndex`/`.rightIndex` against `.leftFootIndex`/`.rightFootIndex`
+    /// — so for that one station they are the two most load-bearing landmarks on the athlete, and
+    /// arguably the ones most worth drawing. They stay hidden for now because this property has no
+    /// station to switch on: making it station-aware means threading one through `PoseOverlayRenderer`
+    /// and the burn-in export path, which is its own change rather than a line here.
+    ///
     /// The **wrist** and **ankle** are kept, because both are load-bearing rather than decorative.
     /// The wrist stands in for the ball and the handle; the ankle carries rowing's knee angle, its
     /// facing check and every horizontal offset, and gates `hasFullBody` for both stations.

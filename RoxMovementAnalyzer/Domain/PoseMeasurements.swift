@@ -47,6 +47,70 @@ enum BodySide: CaseIterable {
     var wrist: PoseLandmarkName { self == .left ? .leftWrist : .rightWrist }
 }
 
+/// Which side of the athlete is nearest the camera, voted over frames.
+///
+/// Side-on, the far limb is behind the near one and MediaPipe estimates rather than tracks it, so
+/// every station filmed in profile needs to know which side to trust. All three analysed stations do,
+/// for the same reason — which is why this lives here rather than in any one of them, exactly as
+/// `ViewpointThresholds` was pulled out of `WallBallThresholds`.
+///
+/// Deliberately sticky: the vote latches and then stops accumulating. A side that flipped mid-rep
+/// would mirror one sample's measurements, and would visibly swap the athlete's arm on the overlay.
+struct NearSideVote: Equatable {
+    /// Frames of comparison before the side is latched.
+    var voteFrames: Int
+    /// How far ahead the winning side must be, as a share of its own total, before the answer is
+    /// confident enough to *draw* on. See `confidentSide`.
+    var minimumMargin: Double
+
+    private var left: Double = 0
+    private var right: Double = 0
+    private var votes = 0
+    private var latched: BodySide?
+
+    init(voteFrames: Int, minimumMargin: Double = 0.15) {
+        self.voteFrames = voteFrames
+        self.minimumMargin = minimumMargin
+    }
+
+    mutating func observe(_ frame: PoseFrame) {
+        guard latched == nil else { return }
+
+        left += frame.sagittalConfidence(.left)
+        right += frame.sagittalConfidence(.right)
+        votes += 1
+
+        if votes >= voteFrames {
+            latched = right > left ? .right : .left
+        }
+    }
+
+    /// The side to **measure**.
+    ///
+    /// Before the vote settles this follows whichever side is currently ahead, so analysis is not
+    /// stalled for the first half-second, and it breaks an exact tie rather than returning nil — a
+    /// measurement has to come from somewhere, and a coin toss beats measuring nothing.
+    var side: BodySide? {
+        if let latched { return latched }
+        guard votes > 0 else { return nil }
+        return right > left ? .right : .left
+    }
+
+    /// The side to **draw** — nil unless the vote has settled *and* one side won by `minimumMargin`.
+    ///
+    /// Stricter than `side` on purpose. Drawing may decline where measuring may not: a skeleton is
+    /// better left two-sided than drawn on a coin toss, and a genuinely front-on athlete produces
+    /// near-equal confidences precisely because neither side is occluding the other.
+    var confidentSide: BodySide? {
+        guard let latched else { return nil }
+
+        let winner = max(left, right)
+        let loser = min(left, right)
+        guard winner > 0, (winner - loser) / winner >= minimumMargin else { return nil }
+        return latched
+    }
+}
+
 /// Scale-invariant measurements derived from a single pose frame.
 ///
 /// Everything is normalized by torso length, so a value means the same thing whether the athlete
@@ -120,6 +184,16 @@ extension PoseFrame {
     /// Shoulder-elbow-wrist angle on one side. 180° is a straight arm.
     func elbowAngle(_ side: BodySide) -> Double? {
         trackedAngle(at: side.elbow, from: side.shoulder, to: side.wrist)
+    }
+
+    /// Hip-shoulder-elbow angle on one side — how far the arm is raised relative to the torso.
+    ///
+    /// The SkiErg pull's segmentation signal: ~165° with the arms straight overhead at the catch, ~35°
+    /// with the hands driven past the hips at the finish. Measured against the torso rather than
+    /// against vertical on purpose, which is what makes it scale-free and translation-free — the phone
+    /// can drift and the athlete can step, and the reading does not move.
+    func shoulderAngle(_ side: BodySide) -> Double? {
+        trackedAngle(at: side.shoulder, from: side.hip, to: side.elbow)
     }
 
     /// Shoulder-hip-knee angle on one side — how closed the athlete is at the hip.
