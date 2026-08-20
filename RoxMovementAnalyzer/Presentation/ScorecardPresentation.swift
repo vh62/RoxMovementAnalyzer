@@ -7,7 +7,7 @@ extension HyroxStation {
         case .wallBalls: "figure.strengthtraining.traditional"
         case .sledPush: "arrow.forward.to.line"
         case .sledPull: "arrow.backward.to.line"
-        case .burpeeBroadJumps: "figure.run"
+        case .burpeeBroadJumps: "figure.mixed.cardio"
         case .rowing: "figure.rower"
         case .running: "figure.run.circle"
         case .lunges: "figure.step.training"
@@ -25,7 +25,7 @@ extension HyroxStation {
         case .sledPull:
             "Arms stay extended, hips remain low, and rope tension stays consistent."
         case .burpeeBroadJumps:
-            "Chest contact, aligned feet, close hands, and jump distance all pass."
+            "Hands within 30 cm of the toes, feet behind the fingertips, and chest to the floor."
         case .rowing:
             "Stroke sequence follows legs, then back, then arms."
         case .running:

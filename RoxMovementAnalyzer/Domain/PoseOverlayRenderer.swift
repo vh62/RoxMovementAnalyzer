@@ -23,13 +23,18 @@ struct PoseOverlayRenderer {
         let justCountedRep: Bool
         /// A fault detected on the movement just finished, called out instead of the count.
         var fault: FaultCallout?
+        /// The SkiErg hand path for the pull at this moment, tinted by pulling effort.
+        var powerTrail: [SkiPull.PowerSample] = []
     }
 
     let showsDepthGuide: Bool
     let requiresFullBody: Bool
-    /// What the badge is counting — "VALID REPS" for wall balls, "STROKES" for rowing. Undefaulted
-    /// so a new station cannot silently inherit another station's vocabulary.
-    let countNoun: String
+    /// Draw only this side of the athlete, or nil to draw both. A session property — see `NearSideVote`.
+    var profileSide: BodySide?
+    /// What the badge is counting, or nil to draw no badge at all — which is what both ergs pass,
+    /// since their own monitor is already counting. Undefaulted so a new station cannot silently
+    /// inherit another station's vocabulary.
+    let countNoun: String?
 
     func draw(_ frame: Frame, in context: CGContext, size: CGSize) {
         let scale = max(size.height / Self.referenceHeight, 1)
@@ -43,9 +48,13 @@ struct PoseOverlayRenderer {
             drawDepthGuide(guide, pose: pose, in: context, size: size, scale: scale)
         }
 
+        // Under the skeleton, matching `PoseOverlayView`: the trail is the widest thing drawn.
+        drawPowerTrail(frame.powerTrail, pose: pose, in: context, size: size, scale: scale)
         drawConnections(pose, in: context, size: size, scale: scale)
         drawLandmarks(pose, in: context, size: size, scale: scale)
-        drawRepBadge(frame, in: context, size: size, scale: scale)
+        if let countNoun {
+            drawRepBadge(frame, noun: countNoun, in: context, size: size, scale: scale)
+        }
 
         // The fault callout stands on its own. Only the "counted" callout needs the depth guide,
         // because it quotes how far below parallel the athlete got.
@@ -104,8 +113,34 @@ struct PoseOverlayRenderer {
         )
     }
 
+    private func drawPowerTrail(
+        _ trail: [SkiPull.PowerSample],
+        pose: PoseFrame,
+        in context: CGContext,
+        size: CGSize,
+        scale: CGFloat
+    ) {
+        context.saveGState()
+        context.setLineCap(.round)
+
+        for segment in PoseOverlayGeometry.trailSegments(
+            trail, in: size, sourceAspectRatio: pose.sourceAspectRatio
+        ) {
+            let shading = PoseOverlayGeometry.trailShading(intensity: segment.intensity)
+            context.setStrokeColor(
+                CGColor(red: 1, green: 0.58, blue: 0.1, alpha: shading.alpha)
+            )
+            context.setLineWidth(shading.width * scale)
+            context.move(to: segment.from)
+            context.addLine(to: segment.to)
+            context.strokePath()
+        }
+
+        context.restoreGState()
+    }
+
     private func drawConnections(_ pose: PoseFrame, in context: CGContext, size: CGSize, scale: CGFloat) {
-        for connection in PoseOverlayGeometry.connections {
+        for connection in PoseOverlayGeometry.connections(for: profileSide) {
             guard let start = pose.landmark(connection.0), let end = pose.landmark(connection.1),
                   start.isVisible, end.isVisible else { continue }
 
@@ -130,7 +165,11 @@ struct PoseOverlayRenderer {
     }
 
     private func drawLandmarks(_ pose: PoseFrame, in context: CGContext, size: CGSize, scale: CGFloat) {
-        for landmark in pose.landmarks where landmark.isVisible && landmark.name.isDrawnInOverlay {
+        // Drawing only. See the note in `PoseOverlayView.drawLandmarks`.
+        let drawn = profileSide.map(PoseOverlayGeometry.landmarks(for:))
+
+        for landmark in pose.landmarks where landmark.isVisible && landmark.name.isDrawnInOverlay
+            && (drawn?.contains(landmark.name) ?? true) {
             let position = PoseOverlayGeometry.point(
                 for: landmark, in: size, sourceAspectRatio: pose.sourceAspectRatio
             )
@@ -145,7 +184,13 @@ struct PoseOverlayRenderer {
         }
     }
 
-    private func drawRepBadge(_ frame: Frame, in context: CGContext, size: CGSize, scale: CGFloat) {
+    private func drawRepBadge(
+        _ frame: Frame,
+        noun: String,
+        in context: CGContext,
+        size: CGSize,
+        scale: CGFloat
+    ) {
         let origin = CGPoint(x: 16 * scale, y: 16 * scale)
         let badgeSize = CGSize(width: 132 * scale, height: 64 * scale)
         let rect = CGRect(origin: origin, size: badgeSize)
@@ -165,7 +210,7 @@ struct PoseOverlayRenderer {
             in: context
         )
         drawText(
-            countNoun,
+            noun,
             at: CGPoint(x: origin.x + 14 * scale, y: origin.y + 46 * scale),
             fontSize: 11 * scale,
             color: CGColor(gray: 1, alpha: 0.85),

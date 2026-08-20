@@ -65,21 +65,6 @@ struct SampleScorecardProvider: ScorecardProviding {
                     ]
                 ),
                 StationScore(
-                    station: .burpeeBroadJumps,
-                    score: 68,
-                    status: .caution,
-                    primaryFeedback: "Chest contact is consistent, but staggered feet and long hand placement reduce jump quality.",
-                    metrics: [
-                        MetricResult(label: "All-rule reps", value: "64%", status: .caution),
-                        MetricResult(label: "Chest contact", value: "96%", status: .strong),
-                        MetricResult(label: "Jump distance", value: "Pass", status: .strong)
-                    ],
-                    alerts: [
-                        RedFlagAlert(station: .burpeeBroadJumps, title: "Staggered feet detected", message: "Land both feet together before takeoff to protect rhythm and rule compliance.", severity: .high, timestamp: 214),
-                        RedFlagAlert(station: .burpeeBroadJumps, title: "Hands too far forward", message: "Bring hands closer to the feet before jumping to reduce wasted distance.", severity: .medium, timestamp: 238)
-                    ]
-                ),
-                StationScore(
                     station: .rowing,
                     score: 82,
                     status: .raceReady,

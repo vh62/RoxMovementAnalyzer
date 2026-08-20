@@ -42,6 +42,6 @@ struct RepCountBadge: View {
 #Preview("Rep Count Badge") {
     ZStack {
         Color.black
-        RepCountBadge(count: 12, attempts: 14, noun: HyroxStation.wallBalls.countNoun)
+        RepCountBadge(count: 12, attempts: 14, noun: "VALID REPS")
     }
 }

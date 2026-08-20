@@ -37,6 +37,7 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
         switch station {
         case .wallBalls: return wallBallScore(frames: frames)
         case .rowing: return rowingScore(frames: frames)
+        case .skiErg: return skiErgScore(frames: frames)
         default: break
         }
 
@@ -229,6 +230,120 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
         )
     }
 
+    /// Pull technique for a SkiErg piece.
+    ///
+    /// Scored the way rowing is rather than the way wall balls is: the machine logs the metres whatever
+    /// the pull looked like, so nothing here voids a pull and the score is simply the share that raised
+    /// no fault, against thresholds that have not yet been calibrated on real footage.
+    private func skiErgScore(frames: [PoseFrame]) -> StationScore {
+        let pulls = SkiPullAnalyzer.analyze(frames: frames)
+
+        guard !pulls.isEmpty else {
+            return StationScore(
+                station: .skiErg,
+                score: 0,
+                status: .needsWork,
+                primaryFeedback: "No SkiErg pulls were detected. Film from the side with the whole "
+                    + "athlete in frame — including the hands at full reach overhead — then record "
+                    + "again.",
+                metrics: [
+                    MetricResult(label: "Pulls", value: "0", status: .needsWork),
+                    MetricResult(label: "Frames analyzed", value: "\(frames.count)", status: .caution)
+                ],
+                alerts: []
+            )
+        }
+
+        let clean = pulls.filter(\.faults.isEmpty).count
+        let accuracy = Double(clean) / Double(pulls.count)
+        let score = Int((accuracy * 100).rounded())
+
+        var metrics: [MetricResult] = [
+            MetricResult(label: "Pulls", value: "\(pulls.count)", status: .raceReady),
+            MetricResult(label: "Clean pulls", value: "\(clean)", status: depthStatus(accuracy))
+        ]
+
+        if let rate = mean(pulls.compactMap(\.pullRateSPM)) {
+            metrics.append(
+                MetricResult(label: "Pull rate", value: String(format: "%.0f/min", rate), status: .raceReady)
+            )
+        }
+
+        // Reported, never judged. Ski rhythm is the athlete's to choose and varies with where they
+        // are in the piece, so this carries no status of its own.
+        if let ratio = mean(pulls.compactMap(\.recoveryRatio)) {
+            metrics.append(
+                MetricResult(
+                    label: "Drive:recovery",
+                    value: String(format: "1:%.1f", ratio),
+                    status: .raceReady
+                )
+            )
+        }
+
+        // Say why rather than silently omitting the measurements a front-on camera cannot make.
+        if let viewpoint = pulls.last?.viewpoint, !viewpoint.supportsReachMeasurement {
+            metrics.append(MetricResult(label: "Hip hinge", value: "Needs side view", status: .caution))
+        } else if let lean = mean(pulls.compactMap(\.finishForwardLean)) {
+            let upright = pulls.filter {
+                $0.hasFault(.noHipHinge) || $0.hasFault(.squattingNotHinging)
+            }.count
+            metrics.append(
+                MetricResult(
+                    label: "Hip hinge",
+                    value: "\(Int(lean.rounded()))°",
+                    status: upright == 0 ? .strong : (upright > pulls.count / 3 ? .needsWork : .caution)
+                )
+            )
+        }
+
+        // The force curve, in the two terms a coach would use: where the power landed, and whether the
+        // athlete was on the handles at full reach. Both are shares of the pull's own peak, never
+        // newtons — see `SkiThresholds`' force-curve note.
+        if let peak = mean(pulls.compactMap(\.peakAtDriveFraction)) {
+            let late = pulls.filter { $0.hasFault(.backLoadedDrive) || $0.hasFault(.disconnectedDrive) }.count
+            metrics.append(
+                MetricResult(
+                    label: "Power peak",
+                    value: "\(Int((peak * 100).rounded()))% in",
+                    status: late == 0 ? .strong : (late > pulls.count / 3 ? .needsWork : .caution)
+                )
+            )
+        }
+
+        // Shown, never judged: on a single-peaked curve this is "Power peak" seen from the other end,
+        // so giving it a status of its own would grade the same thing twice.
+        if let connection = mean(pulls.compactMap(\.catchConnection)) {
+            metrics.append(
+                MetricResult(
+                    label: "Top-end load",
+                    value: "\(Int((connection * 100).rounded()))%",
+                    status: .raceReady
+                )
+            )
+        }
+
+        if pulls.contains(where: { !$0.handsTracked }) {
+            metrics.append(MetricResult(label: "Hands in frame", value: "Partial", status: .caution))
+        }
+
+        return StationScore(
+            station: .skiErg,
+            score: score,
+            status: depthStatus(accuracy),
+            primaryFeedback: "\(clean) of \(pulls.count) pulls were clean. Every pull counts on the "
+                + "ski — this scores the sequencing and range of the pull, not whether it was legal, "
+                + "and the thresholds behind it are starting estimates rather than calibrated values.",
+            metrics: metrics,
+            alerts: alerts(
+                for: StationAnalysis.skiErg(pulls).countedMovements,
+                station: .skiErg,
+                kindOrder: SkiFault.Kind.allCases.map(\.rawValue),
+                noun: "pulls"
+            )
+        )
+    }
+
     private func mean(_ values: [Double]) -> Double? {
         guard !values.isEmpty else { return nil }
         return values.reduce(0, +) / Double(values.count)
@@ -237,8 +352,8 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
     /// One alert per fault kind, pointing at the first movement where it happened so the scorecard
     /// can jump the replay to that moment.
     ///
-    /// Shared by both analysed stations: `kindOrder` supplies the station's own priority so the
-    /// alerts come out in the order that station would coach them.
+    /// Shared by every analysed station: `kindOrder` supplies the station's own priority so the alerts
+    /// come out in the order that station would coach them.
     private func alerts(
         for movements: [CountedMovement],
         station: HyroxStation,
@@ -308,7 +423,7 @@ struct PoseSessionAnalyzer: LiveSessionAnalyzing {
         return metrics
     }
 
-    /// Banding shared by wall-ball depth accuracy and the rowing clean-stroke share.
+    /// Banding shared by wall-ball depth accuracy and both ergs' clean-movement share.
     private func depthStatus(_ accuracy: Double) -> StationStatus {
         switch accuracy {
         case 0.9...: .strong

@@ -332,7 +332,8 @@ struct OverlayVideoExporter {
                 count: entry.count,
                 attempts: entry.attempts,
                 justCountedRep: entry.isCelebratingRep(at: seconds),
-                fault: timeline.activeFault(at: seconds)
+                fault: timeline.activeFault(at: seconds),
+                powerTrail: timeline.powerTrail(at: seconds)
             ),
             in: context,
             size: renderSize

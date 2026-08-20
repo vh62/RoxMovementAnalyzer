@@ -25,6 +25,27 @@ enum PoseOverlayGeometry {
         // See `PoseLandmarkName.isDrawnInOverlay` for why the face, fingers and feet are left out.
     ]
 
+    /// The bones to draw for a profile view of one side.
+    ///
+    /// Five links rather than twelve. The two cross-body bones are gone because side-on they collapse
+    /// to a near-zero-length stub, and the far arm and leg are gone because MediaPipe *estimates* them
+    /// from behind the near ones — drawing them shows the athlete a limb that was guessed.
+    static func connections(for side: BodySide?) -> [(PoseLandmarkName, PoseLandmarkName)] {
+        guard let side else { return connections }
+        return [
+            (side.shoulder, side.elbow),
+            (side.elbow, side.wrist),
+            (side.shoulder, side.hip),
+            (side.hip, side.knee),
+            (side.knee, side.ankle)
+        ]
+    }
+
+    /// The joints to draw for a profile view of one side.
+    static func landmarks(for side: BodySide) -> Set<PoseLandmarkName> {
+        [side.shoulder, side.elbow, side.wrist, side.hip, side.knee, side.ankle]
+    }
+
     /// How the video is fitted into its container — and therefore how landmarks map onto it.
     ///
     /// The overlay and the video it sits on must agree, or the skeleton drifts off the body, which
@@ -150,5 +171,59 @@ enum PoseOverlayGeometry {
             kneeLevel: kneeLevel,
             hipLevel: frame.visibleAverageY(.leftHip, .rightHip)
         )
+    }
+
+    // MARK: - Power trail
+
+    /// One drawable leg of the SkiErg hand path, with the effort it was travelling under.
+    struct TrailSegment {
+        let from: CGPoint
+        let to: CGPoint
+        /// The larger of the two endpoints' intensities, so a segment is drawn at the effort it
+        /// represents rather than fading toward whichever end happens to come second.
+        let intensity: Double
+    }
+
+    /// Maps a pull's hand path into view space, pairing consecutive points into drawable legs.
+    ///
+    /// Goes through `point(forNormalizedX:y:...)`, the same mapping every landmark uses, so the trail
+    /// lands on the hands rather than near them.
+    static func trailSegments(
+        _ trail: [SkiPull.PowerSample],
+        in size: CGSize,
+        sourceAspectRatio: Double,
+        scalingMode: ScalingMode = .aspectFill
+    ) -> [TrailSegment] {
+        guard trail.count >= 2 else { return [] }
+
+        let points = trail.map {
+            point(
+                forNormalizedX: $0.x, y: $0.y, in: size,
+                sourceAspectRatio: sourceAspectRatio, scalingMode: scalingMode
+            )
+        }
+
+        return (0..<(points.count - 1)).map { index in
+            TrailSegment(
+                from: points[index],
+                to: points[index + 1],
+                intensity: max(trail[index].intensity, trail[index + 1].intensity)
+            )
+        }
+    }
+
+    /// How hard a segment is drawn, given its intensity.
+    ///
+    /// **Effort by width and opacity on a single hue, never by colour.** Green and red already mean
+    /// depth-reached and fault everywhere else on this overlay, so a colour ramp would collide with a
+    /// vocabulary the athlete has already learned. Ramping the weight instead keeps the trail reading
+    /// as one quantity, and keeps faith with the rule that the overlay is a reference for the
+    /// athlete's form rather than the subject of the frame.
+    ///
+    /// Lives here so the SwiftUI `Canvas` and the `CGContext` exporter cannot draw the same pull two
+    /// different ways.
+    static func trailShading(intensity: Double) -> (width: CGFloat, alpha: Double) {
+        let clamped = min(max(intensity, 0), 1)
+        return (width: 2 + 6 * clamped, alpha: 0.15 + 0.75 * clamped)
     }
 }

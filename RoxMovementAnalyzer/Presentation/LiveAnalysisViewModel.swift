@@ -46,8 +46,14 @@ final class LiveAnalysisViewModel {
     /// Whether the finished session can be watched back with its overlay.
     var canReviewVideo: Bool { sessionVideoURL != nil && !(sessionTimeline?.isEmpty ?? true) }
 
-    /// Whether a live count is available for the selected station.
-    var showsLiveRepCount: Bool { selectedStation.hasMovementAnalysis }
+    /// Whether the analysis controls — audio cues, the tuning readout — apply to this station.
+    ///
+    /// Distinct from `countNoun`, which decides the *counter*. Both ergs are analysed and want the
+    /// controls; neither shows a tally.
+    var showsAnalysisControls: Bool { selectedStation.hasMovementAnalysis }
+
+    /// What the live counter is counting, or nil for a station that shows none.
+    var countNoun: String? { selectedStation.countNoun }
 
     /// Stations whose analysis needs the whole body in frame — the skeleton is only drawn once the
     /// full body is tracked, since both analysed stations measure joint relationships across it.
@@ -56,6 +62,13 @@ final class LiveAnalysisViewModel {
     /// Whether to draw the hip-versus-knee parallel line. Wall balls only: it is a squat-judging
     /// device and would be nonsense over a seated rower.
     var showsDepthGuide: Bool { selectedStation.showsDepthGuide }
+    var showsJointAngles: Bool { selectedStation.showsJointAngles }
+
+    /// The side of the skeleton to draw live, or nil to draw both.
+    ///
+    /// Nil for the first half-second while the vote settles, so the skeleton starts two-sided and
+    /// switches once. Preferred over hiding the skeleton until the answer arrives.
+    var profileSide: BodySide? { liveCounter.profileSide }
 
     private let feedbackGenerator: LiveFeedbackGenerating
     private let sessionAnalyzer: LiveSessionAnalyzing
@@ -369,12 +382,13 @@ final class LiveAnalysisViewModel {
     /// Shows coaching for the movement just finished, held long enough to read before the standing
     /// cue returns.
     private func handleCompletedMovement(_ movement: CountedMovement) {
-        // Only wall balls has a rule a movement can fail. A shallow rep cannot be known until the
-        // athlete starts back up, so this lands at completion rather than at the bottom, and it
-        // never collides with the count: a rep either broke parallel and was counted, or it did not
-        // and is called here. Rowing has no no-rep — every stroke counts — so it stays silent.
+        // Wall balls and burpee broad jumps are the two stations with a rule a movement can fail.
+        // Neither verdict can be known before the movement finishes — a shallow rep is only settled
+        // once the athlete starts back up, and a burpee can still fail rule 6 at the very end — so
+        // this lands at completion rather than mid-movement, and never collides with the count.
+        // Neither erg has a no-rep — every stroke and pull counts — so both stay silent.
         if selectedStation.hasNoRepRule, !movement.counted {
-            playShallowRepCueIfAllowed()
+            playNoRepCueIfAllowed()
         }
 
         if let fault = movement.fault {
@@ -386,8 +400,10 @@ final class LiveAnalysisViewModel {
         }
     }
 
-    /// Whether the hands left frame during the movement, so the throw or the handle draw could not
-    /// be measured. Both stations depend on the wrists and both lose them the same way.
+    /// Whether the hands left frame during the movement, so the measurements that need them could not
+    /// be taken. Every analysed station depends on the wrists, and they are lost at the point of the
+    /// movement where they matter most: for the throw and both handle draws that is the top, and for
+    /// a burpee it is the floor, at the bottom edge of a shot framed for a travelling athlete.
     private func needsFramingHelp(for movement: CountedMovement) -> Bool {
         switch latestAnalysis {
         case .wallBalls(let reps):
@@ -396,18 +412,21 @@ final class LiveAnalysisViewModel {
         case .rowing(let strokes):
             guard let stroke = strokes.first(where: { $0.index == movement.index }) else { return false }
             return !stroke.handsTracked
+        case .skiErg(let pulls):
+            guard let pull = pulls.first(where: { $0.index == movement.index }) else { return false }
+            return !pull.handsTracked
         case .unsupported:
             return false
         }
     }
 
-    private func playShallowRepCueIfAllowed() {
+    private func playNoRepCueIfAllowed() {
         guard audioCuesEnabled else { return }
 
         let now = Date()
         guard now >= shallowRepCueAllowedAt else { return }
 
-        repCuePlayer.playShallowRepCue()
+        repCuePlayer.playNoRepCue(selectedStation.noRepPhrase)
         shallowRepCueAllowedAt = now.addingTimeInterval(Self.shallowRepCueCooldown)
     }
 

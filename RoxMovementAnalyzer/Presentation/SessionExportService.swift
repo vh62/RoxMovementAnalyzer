@@ -132,6 +132,7 @@ final class SessionExportService {
             renderer: PoseOverlayRenderer(
                 showsDepthGuide: request.station.showsDepthGuide,
                 requiresFullBody: request.station.requiresFullBody,
+                profileSide: request.timeline.profileSide,
                 countNoun: request.station.countNoun
             )
         )

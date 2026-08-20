@@ -28,12 +28,38 @@ extension LiveFeedbackGenerating {
         )
     }
 
+    /// Worded per station, because what losing the hands costs differs — release timing on a wall
+    /// ball, the handle draw on either erg, both placement rules on a burpee — and a cue that named
+    /// the wrong movement would read as the app not knowing what it was watching.
+    ///
+    /// Burpees are also the one station where the hands are lost at the *bottom* rather than the top,
+    /// so the instruction is the opposite one.
     func framingCue(for station: HyroxStation) -> LiveFeedbackCue {
-        LiveFeedbackCue(
+        let detail: String
+        switch station {
+        case .burpeeBroadJumps:
+            return LiveFeedbackCue(
+                station: station,
+                message: "Show your hands on the floor",
+                detail: "Your hands drop out of frame at the bottom, so the hand and foot placement "
+                    + "rules can't be judged. Lower the phone or step back.",
+                status: .caution
+            )
+        case .skiErg:
+            detail = "Your hands go out of frame at the top of the pull, so the reach and the handle "
+                + "draw can't be measured. Step back or tilt the phone up."
+        case .rowing:
+            detail = "Your hands leave frame during the stroke, so the handle draw can't be measured. "
+                + "Step back or turn the phone to landscape."
+        default:
+            detail = "Your hands go out of frame at the top of the throw, so release timing can't be "
+                + "measured. Step back or tilt the phone up."
+        }
+
+        return LiveFeedbackCue(
             station: station,
             message: "Leave room overhead",
-            detail: "Your hands go out of frame at the top of the throw, so release timing can't be "
-                + "measured. Step back or tilt the phone up.",
+            detail: detail,
             status: .caution
         )
     }
@@ -84,8 +110,9 @@ struct StationRuleLiveFeedbackGenerator: LiveFeedbackGenerating {
         case .burpeeBroadJumps:
             LiveFeedbackCue(
                 station: station,
-                message: "Land both feet together",
-                detail: "Live rule target: chest contact, aligned feet, close hands, then jump.",
+                message: "Hands and feet close",
+                detail: "Live rule target: hands within 30 cm of your toes, feet no further "
+                    + "forward than your fingertips, and chest to the floor.",
                 status: .caution
             )
         case .rowing:

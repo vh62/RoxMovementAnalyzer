@@ -27,15 +27,16 @@ struct CountedMovement: Equatable, Identifiable {
     let endSeconds: Double
     /// Whether it counted toward the tally.
     ///
-    /// Always true for rowing: every stroke counts and the erg logs the metres either way. Wall
-    /// balls is the station with a rule a movement can fail — the hips break parallel or the rep is
-    /// a no-rep — so this is the only station where it can be false.
+    /// Always true for both ergs: every stroke and every pull counts, and the machine logs the metres
+    /// either way. The two judged stations are where this can be false, and they fail differently:
+    /// a wall ball has exactly one rule — the hips break parallel or they do not — while a burpee
+    /// broad jump has four, so `BurpeeRep.isValid` is simply whether any fault fired.
     let counted: Bool
     /// Every fault on this movement, in the station's own priority order.
     let faults: [FaultCallout]
     /// The moment worth jumping the replay to. The station picks it: for a wall ball that is the
-    /// release, for a stroke the finish — in both cases where the error is visible, which is not
-    /// necessarily where the record ends.
+    /// release, for a stroke or a pull the finish — in every case where the error is visible, which is
+    /// not necessarily where the record ends.
     let calloutSeconds: Double
 
     /// The fault worth showing, already prioritised by the station's own ordering.
@@ -46,6 +47,7 @@ struct CountedMovement: Equatable, Identifiable {
 enum StationAnalysis: Equatable {
     case wallBalls([WallBallRep])
     case rowing([RowStroke])
+    case skiErg([SkiPull])
     /// No analyzer exists for this station yet. The session still has frames and tracking coverage;
     /// nothing is counted and nothing is faulted.
     case unsupported
@@ -54,6 +56,7 @@ enum StationAnalysis: Equatable {
         switch station {
         case .wallBalls: .wallBalls(WallBallRepAnalyzer.analyze(frames: frames))
         case .rowing: .rowing(RowStrokeAnalyzer.analyze(frames: frames))
+        case .skiErg: .skiErg(SkiPullAnalyzer.analyze(frames: frames))
         default: .unsupported
         }
     }
@@ -80,6 +83,16 @@ enum StationAnalysis: Equatable {
                     calloutSeconds: $0.finishSeconds
                 )
             }
+        case .skiErg(let pulls):
+            pulls.map {
+                CountedMovement(
+                    id: $0.index, index: $0.index,
+                    startSeconds: $0.startSeconds, endSeconds: $0.endSeconds,
+                    counted: true,
+                    faults: $0.faults.map(\.callout),
+                    calloutSeconds: $0.finishSeconds
+                )
+            }
         case .unsupported:
             []
         }
@@ -89,37 +102,82 @@ enum StationAnalysis: Equatable {
 extension HyroxStation {
     /// Whether a movement analyzer exists for this station. Everything else here follows from it.
     var hasMovementAnalysis: Bool {
-        self == .wallBalls || self == .rowing
+        switch self {
+        case .wallBalls, .rowing, .skiErg, .burpeeBroadJumps: true
+        default: false
+        }
     }
 
     /// Whether analysis needs the whole athlete in frame, gating whether the skeleton is drawn.
-    /// Both analysed stations measure joint relationships that a partial body cannot support.
+    /// Every analysed station measures joint relationships that a partial body cannot support.
     var requiresFullBody: Bool { hasMovementAnalysis }
 
     /// The depth guide draws the hip-versus-knee parallel line. That is a wall-ball judging device
     /// and means nothing on an erg, where the athlete is seated throughout.
     var showsDepthGuide: Bool { self == .wallBalls }
 
-    /// What the running tally is counting.
+    /// Whether the overlay labels joint angles — back, hinge, knees, elbows.
     ///
-    /// Deliberately not one shared word. A wall-ball rep is *valid* or it is a no-rep — the hips
-    /// broke parallel or they did not — whereas every rowing stroke counts and the erg logs the
-    /// metres either way. Calling a stroke a "valid rep" would import a judging concept that rowing
-    /// does not have.
-    var countNoun: String {
+    /// Off for burpee broad jumps, and that follows from what §8.4 actually judges. Every other
+    /// analysed station has faults phrased in joints: the hinge and the knee carry both erg's power,
+    /// and the squat is judged on hip versus knee. A burpee is judged on **where the hands and feet
+    /// are relative to each other**, and not one of its three rules reads a joint angle. Labelling
+    /// six of them would put the app's most prominent numbers on the only quantities that cannot
+    /// change the verdict.
+    var showsJointAngles: Bool { self != .burpeeBroadJumps }
+
+    /// What the running tally is counting, or **nil for a station that should not show one**.
+    ///
+    /// Wall balls and burpee broad jumps count because the tally is the judged quantity: a rep is
+    /// valid or it is a no-rep, and nothing else in the athlete's view is keeping score.
+    ///
+    /// Both ergs are nil, and the reason is the machine. A RowErg or SkiErg monitor is a foot from the
+    /// athlete's face already showing strokes, split and metres — from its own sensor on its own
+    /// flywheel, which is a far better counter than pose estimation will ever be. Putting a second,
+    /// worse number next to it invites the athlete to notice when the two disagree, and the app would
+    /// be the one that was wrong. The ergs' analysis is about *how* each stroke was made, which is the
+    /// thing the monitor cannot tell them.
+    var countNoun: String? {
         switch self {
-        case .wallBalls: "VALID REPS"
-        case .rowing: "STROKES"
-        default: "TRACKED"
+        case .wallBalls, .burpeeBroadJumps: "VALID REPS"
+        default: nil
         }
     }
 
-    /// Whether a movement can fail to count. Only wall balls has a no-rep, which is why it is the
-    /// only station that calls one aloud.
-    var hasNoRepRule: Bool { self == .wallBalls }
+    /// Whether a movement can fail to count, and so whether a no-rep is called aloud.
+    ///
+    /// Neither erg has a judging concept to import — the machine logs the metres either way. Wall
+    /// balls and burpee broad jumps both do, which is why both speak.
+    var hasNoRepRule: Bool { self == .wallBalls || self == .burpeeBroadJumps }
+
+    /// What is said aloud when a rep does not count.
+    ///
+    /// A correction where there is only one thing to correct, and a plain verdict where there is not:
+    /// a wall ball fails one way, so "squat lower" is always the right instruction, while a burpee
+    /// broad jump can fail four different rules and naming the wrong one mid-set would be worse than
+    /// naming none. Which rule it was is on screen. Short on purpose either way — this lands while the
+    /// athlete is already moving into the next rep.
+    var noRepPhrase: String {
+        switch self {
+        case .wallBalls: "Squat lower"
+        default: "No rep"
+        }
+    }
 }
 
 extension WallBallFault {
+    var callout: FaultCallout {
+        FaultCallout(
+            title: title,
+            liveMessage: liveMessage,
+            coachingDetail: coachingDetail,
+            severity: severity,
+            kindIdentifier: kind.rawValue
+        )
+    }
+}
+
+extension SkiFault {
     var callout: FaultCallout {
         FaultCallout(
             title: title,
@@ -153,12 +211,14 @@ extension RowingFault {
 enum LiveMovementCounter {
     case wallBalls(WallBallRepAnalyzer)
     case rowing(RowStrokeAnalyzer)
+    case skiErg(SkiPullAnalyzer)
     case unsupported
 
     init(station: HyroxStation) {
         switch station {
         case .wallBalls: self = .wallBalls(WallBallRepAnalyzer())
         case .rowing: self = .rowing(RowStrokeAnalyzer())
+        case .skiErg: self = .skiErg(SkiPullAnalyzer())
         default: self = .unsupported
         }
     }
@@ -171,17 +231,34 @@ enum LiveMovementCounter {
         case .rowing(var analyzer):
             analyzer.process(frame)
             self = .rowing(analyzer)
+        case .skiErg(var analyzer):
+            analyzer.process(frame)
+            self = .skiErg(analyzer)
         case .unsupported:
             break
         }
     }
 
-    /// The tally as of right now — valid reps, or strokes.
+    /// The tally as of right now — valid reps, strokes, or pulls.
     var count: Int {
         switch self {
         case .wallBalls(let analyzer): analyzer.validRepsSoFar
         case .rowing(let analyzer): analyzer.strokesSoFar
+        case .skiErg(let analyzer): analyzer.pullsSoFar
         case .unsupported: 0
+        }
+    }
+
+    /// The side the overlay should draw, or nil to draw both.
+    ///
+    /// Every analysed station is filmed in profile and every one of them answers this the same way;
+    /// burpees have no side vote yet, so they draw both sides as before.
+    var profileSide: BodySide? {
+        switch self {
+        case .wallBalls(let analyzer): analyzer.profileSide
+        case .rowing(let analyzer): analyzer.profileSide
+        case .skiErg(let analyzer): analyzer.profileSide
+        default: nil
         }
     }
 
@@ -201,13 +278,15 @@ enum LiveMovementCounter {
             analyzer.validRepsSoFar + analyzer.completedReps.filter { !$0.reachedDepth }.count
         case .rowing(let analyzer):
             analyzer.strokesSoFar
+        case .skiErg(let analyzer):
+            analyzer.pullsSoFar
         case .unsupported:
             0
         }
     }
 
-    /// Records finished so far. Wall balls closes a rep at the catch that follows the throw; rowing
-    /// closes a stroke at the following catch, so both lag the tally.
+    /// Records finished so far. Wall balls closes a rep at the catch that follows the throw; both ergs
+    /// close a movement at the following catch, so all three lag the tally.
     var completedMovements: [CountedMovement] {
         analysis.countedMovements
     }
@@ -216,6 +295,7 @@ enum LiveMovementCounter {
         switch self {
         case .wallBalls(let analyzer): .wallBalls(analyzer.completedReps)
         case .rowing(let analyzer): .rowing(analyzer.completedStrokes)
+        case .skiErg(let analyzer): .skiErg(analyzer.completedPulls)
         case .unsupported: .unsupported
         }
     }

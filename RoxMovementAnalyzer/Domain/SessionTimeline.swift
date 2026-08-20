@@ -40,6 +40,9 @@ struct SessionTimeline: Equatable {
     private(set) var analysis: StationAnalysis
     /// Station-neutral view of the analysis, for the scrubber and the fault banner.
     private(set) var movements: [CountedMovement]
+    /// The side of the skeleton to draw, or nil to draw both. A session property, not a per-frame one:
+    /// see `NearSideVote`.
+    private(set) var profileSide: BodySide?
 
     var isEmpty: Bool { entries.isEmpty }
 
@@ -62,6 +65,7 @@ struct SessionTimeline: Equatable {
             self.entries = []
             self.analysis = .unsupported
             self.movements = []
+            self.profileSide = nil
             return
         }
 
@@ -90,6 +94,10 @@ struct SessionTimeline: Equatable {
                 lastCountedAt: lastCountedAt
             )
         }
+
+        // Read after the pass, not during it: the vote needs the whole session to settle, and a
+        // half-formed answer would have the skeleton change sides partway through a replay.
+        self.profileSide = counter.profileSide
     }
 
     /// The entry in effect at `seconds` — the nearest preceding frame, or nil when playback is
@@ -129,6 +137,17 @@ struct SessionTimeline: Equatable {
         faultedMovements.last {
             seconds >= $0.endSeconds && seconds - $0.endSeconds <= Self.faultCalloutWindow
         }
+    }
+
+    /// The hand path to draw at `seconds`, tinted by how hard the athlete was pulling — empty for
+    /// every station but the SkiErg, and for a pull whose wrists were not tracked.
+    ///
+    /// The station switch lives here rather than in the two renderers, the same seam `activeFault(at:)`
+    /// uses to flatten each station's fault enum into a `FaultCallout`: a view should not have to know
+    /// which station it is drawing.
+    func powerTrail(at seconds: Double) -> [SkiPull.PowerSample] {
+        guard case .skiErg(let pulls) = analysis, let movement = movement(at: seconds) else { return [] }
+        return pulls.first { $0.index == movement.index }?.powerTrail ?? []
     }
 
     /// The movement in progress at `seconds`, for the tuning readout. Its `index` addresses the

@@ -84,6 +84,9 @@ struct SessionPlaybackView: View {
                 PoseOverlayView(
                     poseFrame: timeline.frame(at: currentTime),
                     showsDepthGuide: station.showsDepthGuide,
+                    showsAngleLabels: station.showsJointAngles,
+                    powerTrail: timeline.powerTrail(at: currentTime),
+                    profileSide: timeline.profileSide,
                     requiresFullBody: station.requiresFullBody,
                     // Matches the player layer's gravity below. A portrait session derives `.fill`,
                     // which is what replay has always used.
@@ -93,11 +96,11 @@ struct SessionPlaybackView: View {
                 )
             }
             .overlay(alignment: .top) {
-                if station.hasMovementAnalysis {
+                if let noun = station.countNoun {
                     RepCountBadge(
                         count: timeline.count(at: currentTime),
                         attempts: station.hasNoRepRule ? timeline.attempts(at: currentTime) : nil,
-                        noun: station.countNoun
+                        noun: noun
                     )
                     .padding(.top, 16)
                 }
@@ -138,7 +141,7 @@ struct SessionPlaybackView: View {
     /// Raw measurements for the movement at the playhead, for calibrating the station's thresholds.
     ///
     /// Deliberately station-specific: the numbers worth reading while tuning wall balls have nothing
-    /// in common with the ones worth reading while tuning a rowing stroke.
+    /// in common with the ones worth reading while tuning a rowing stroke or a ski pull.
     @ViewBuilder
     private var tuningReadout: some View {
         if showsTuning, let movement = timeline.movement(at: currentTime) {
@@ -165,6 +168,22 @@ struct SessionPlaybackView: View {
                         readoutRow("arms", stroke.armBreakOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")
                         readoutRow("slide", stroke.slideRatio.map { String(format: "%.2f", $0) } ?? "—")
                         readoutRow("hands", stroke.handsTracked ? "tracked" : "lost")
+                    }
+                case .skiErg(let pulls):
+                    if let pull = pulls.first(where: { $0.index == movement.index }) {
+                        Text("PULL \(pull.index + 1) · \(pull.viewpoint.rawValue)")
+                            .font(.caption2.weight(.black))
+                        readoutRow("catch", String(format: "%.0f°", pull.catchShoulderAngle))
+                        readoutRow("finish", String(format: "%.0f°", pull.finishShoulderAngle))
+                        readoutRow("rate", pull.pullRateSPM.map { String(format: "%.1f/min", $0) } ?? "—")
+                        readoutRow("ratio", pull.recoveryRatio.map { String(format: "%.2f", $0) } ?? "—")
+                        readoutRow("lean", pull.finishForwardLean.map { String(format: "%.0f°", $0) } ?? "—")
+                        readoutRow("hinge", pull.hingeToKneeRatio.map { String(format: "%.2f", $0) } ?? "—")
+                        readoutRow("peak", pull.peakAtDriveFraction.map { String(format: "%.0f%%", $0 * 100) } ?? "—")
+                        readoutRow("load", pull.catchConnection.map { String(format: "%.2f", $0) } ?? "—")
+                        readoutRow("dip", pull.midDriveDip.map { String(format: "%.2f", $0) } ?? "—")
+                        readoutRow("speed", pull.peakHandSpeed.map { String(format: "%.1f", $0) } ?? "—")
+                        readoutRow("hands", pull.handsTracked ? "tracked" : "lost")
                     }
                 case .unsupported:
                     EmptyView()

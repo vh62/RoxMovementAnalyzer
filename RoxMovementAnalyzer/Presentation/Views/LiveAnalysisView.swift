@@ -32,7 +32,8 @@ struct LiveAnalysisView: View {
                         poseFrame: viewModel.latestPoseFrame,
                         showsDepthGuide: viewModel.showsDepthGuide && depthGuideEnabled,
                         showsSkeleton: skeletonOverlayEnabled,
-                        showsAngleLabels: angleLabelsEnabled,
+                        showsAngleLabels: angleLabelsEnabled && viewModel.showsJointAngles,
+                        profileSide: viewModel.profileSide,
                         requiresFullBody: viewModel.requiresFullBody,
                         scalingMode: overlayScalingMode
                     )
@@ -250,7 +251,7 @@ struct LiveAnalysisView: View {
                 .disabled(viewModel.recordingState == .recording)
                 .accessibilityLabel("Switch camera")
 
-                if viewModel.showsLiveRepCount {
+                if viewModel.showsAnalysisControls {
                     audioCueButton
 
                     Button {
@@ -359,11 +360,11 @@ struct LiveAnalysisView: View {
 
     @ViewBuilder
     private var liveRepBadge: some View {
-        if viewModel.recordingState == .recording, viewModel.showsLiveRepCount {
+        if viewModel.recordingState == .recording, let noun = viewModel.countNoun {
             RepCountBadge(
                 count: viewModel.liveRepCount,
                 attempts: viewModel.liveAttemptCount,
-                noun: viewModel.selectedStation.countNoun
+                noun: noun
             )
             .padding(.top, 72)
         }
@@ -395,6 +396,20 @@ struct LiveAnalysisView: View {
                         Text("arms   \(stroke.armBreakOffset.map { String(format: "%+.0f ms", $0 * 1000) } ?? "—")")
                         Text("slide  \(stroke.slideRatio.map { String(format: "%.2f", $0) } ?? "—")")
                         Text("hands  \(stroke.handsTracked ? "tracked" : "lost")")
+                    }
+                case .skiErg(let pulls):
+                    if let pull = pulls.last {
+                        Text("PULL \(pull.index + 1) · \(pull.viewpoint.rawValue)")
+                            .font(.caption2.weight(.black))
+                        Text("catch  \(String(format: "%.0f°", pull.catchShoulderAngle))")
+                        Text("rate   \(pull.pullRateSPM.map { String(format: "%.1f/min", $0) } ?? "—")")
+                        Text("ratio  \(pull.recoveryRatio.map { String(format: "%.2f", $0) } ?? "—")")
+                        Text("lean   \(pull.finishForwardLean.map { String(format: "%.0f°", $0) } ?? "—")")
+                        Text("hinge  \(pull.hingeToKneeRatio.map { String(format: "%.2f", $0) } ?? "—")")
+                        Text("peak   \(pull.peakAtDriveFraction.map { String(format: "%.0f%%", $0 * 100) } ?? "—")")
+                        Text("load   \(pull.catchConnection.map { String(format: "%.2f", $0) } ?? "—")")
+                        Text("dip    \(pull.midDriveDip.map { String(format: "%.2f", $0) } ?? "—")")
+                        Text("hands  \(pull.handsTracked ? "tracked" : "lost")")
                     }
                 case .unsupported:
                     EmptyView()
@@ -530,6 +545,12 @@ struct PoseOverlayView: View {
     var showsDepthGuide = false
     var showsSkeleton = true
     var showsAngleLabels = true
+    /// The SkiErg hand path for the pull at this moment, tinted by pulling effort. Empty everywhere
+    /// else, which is what keeps this a no-op for the stations that have no force curve.
+    var powerTrail: [SkiPull.PowerSample] = []
+    /// Draw only this side of the athlete, or nil to draw both. Set when the camera is beside the
+    /// athlete, where the far limb is MediaPipe's estimate rather than a tracked joint.
+    var profileSide: BodySide?
     /// When true, the skeleton is only drawn if the whole body is tracked (see PoseFrame.hasFullBody).
     var requiresFullBody = false
     /// How the video underneath is fitted, so the skeleton lands on the body.
@@ -547,6 +568,9 @@ struct PoseOverlayView: View {
                     if showsDepthGuide {
                         drawDepthGuide(in: context, size: size, poseFrame: poseFrame)
                     }
+                    // Under the skeleton: the trail is the widest thing drawn, and the bones have to
+                    // stay readable over it.
+                    drawPowerTrail(in: context, size: size, poseFrame: poseFrame)
                     if showsSkeleton {
                         drawConnections(in: context, size: size, poseFrame: poseFrame)
                         drawLandmarks(in: context, size: size, poseFrame: poseFrame)
@@ -610,8 +634,27 @@ struct PoseOverlayView: View {
         context.draw(label, at: CGPoint(x: videoRect.midX, y: max(kneeY - 14, videoRect.minY + 12)))
     }
 
+    /// Draws the hand path for the pull at the playhead, weighted by how hard the athlete was pulling
+    /// as the hands passed through each part of their range.
+    private func drawPowerTrail(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
+        for segment in PoseOverlayGeometry.trailSegments(
+            powerTrail, in: size,
+            sourceAspectRatio: poseFrame.sourceAspectRatio, scalingMode: scalingMode
+        ) {
+            let shading = PoseOverlayGeometry.trailShading(intensity: segment.intensity)
+            var path = Path()
+            path.move(to: segment.from)
+            path.addLine(to: segment.to)
+            context.stroke(
+                path,
+                with: .color(.orange.opacity(shading.alpha)),
+                style: StrokeStyle(lineWidth: shading.width, lineCap: .round)
+            )
+        }
+    }
+
     private func drawConnections(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
-        for connection in PoseOverlayGeometry.connections {
+        for connection in PoseOverlayGeometry.connections(for: profileSide) {
             guard let start = poseFrame.landmark(connection.0), let end = poseFrame.landmark(connection.1) else { continue }
             guard start.isVisible, end.isVisible else { continue }
             var path = Path()
@@ -625,8 +668,15 @@ struct PoseOverlayView: View {
     }
 
     private func drawLandmarks(in context: GraphicsContext, size: CGSize, poseFrame: PoseFrame) {
+        // Filters what is *drawn*, never what is measured. `shoulderToTorsoRatio` reads the apparent
+        // shoulder spread, and a narrow spread is exactly what tells `viewpoint` the camera is beside
+        // the athlete — removing the far shoulder from the pose itself would destroy the reading that
+        // decides this filtering is on at all.
+        let drawn = profileSide.map(PoseOverlayGeometry.landmarks(for:))
+
         for landmark in poseFrame.landmarks {
             guard landmark.isVisible, landmark.name.isDrawnInOverlay else { continue }
+            guard drawn?.contains(landmark.name) ?? true else { continue }
             let position = point(for: landmark, in: size, sourceAspectRatio: poseFrame.sourceAspectRatio)
             let rect = CGRect(x: position.x - 2, y: position.y - 2, width: 4, height: 4)
             context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.7)))
@@ -646,24 +696,25 @@ struct PoseOverlayView: View {
             labels.append(label("Hinge", angle: angle, at: hipCenter, poseFrame: poseFrame, size: size, yOffset: -28))
         }
 
-        if poseFrame.areVisible(.leftHip, .leftKnee, .leftAnkle),
-           let angle = poseFrame.angle(at: .leftKnee, from: .leftHip, to: .leftAnkle), let knee = poseFrame.landmark(.leftKnee) {
-            labels.append(label("L knee", angle: angle, at: knee, poseFrame: poseFrame, size: size))
-        }
+        // In profile only the drawn side is labelled, and the L/R prefix goes with it: that prefix
+        // exists to tell two labels apart, and there are no longer two.
+        let sides: [BodySide] = profileSide.map { [$0] } ?? [.left, .right]
+        let prefixed = sides.count > 1
 
-        if poseFrame.areVisible(.rightHip, .rightKnee, .rightAnkle),
-           let angle = poseFrame.angle(at: .rightKnee, from: .rightHip, to: .rightAnkle), let knee = poseFrame.landmark(.rightKnee) {
-            labels.append(label("R knee", angle: angle, at: knee, poseFrame: poseFrame, size: size))
-        }
+        for side in sides {
+            let name = prefixed ? (side == .left ? "L " : "R ") : ""
 
-        if poseFrame.areVisible(.leftShoulder, .leftElbow, .leftWrist),
-           let angle = poseFrame.angle(at: .leftElbow, from: .leftShoulder, to: .leftWrist), let elbow = poseFrame.landmark(.leftElbow) {
-            labels.append(label("L elbow", angle: angle, at: elbow, poseFrame: poseFrame, size: size))
-        }
+            if poseFrame.areVisible(side.hip, side.knee, side.ankle),
+               let angle = poseFrame.angle(at: side.knee, from: side.hip, to: side.ankle),
+               let knee = poseFrame.landmark(side.knee) {
+                labels.append(label(name + "knee", angle: angle, at: knee, poseFrame: poseFrame, size: size))
+            }
 
-        if poseFrame.areVisible(.rightShoulder, .rightElbow, .rightWrist),
-           let angle = poseFrame.angle(at: .rightElbow, from: .rightShoulder, to: .rightWrist), let elbow = poseFrame.landmark(.rightElbow) {
-            labels.append(label("R elbow", angle: angle, at: elbow, poseFrame: poseFrame, size: size))
+            if poseFrame.areVisible(side.shoulder, side.elbow, side.wrist),
+               let angle = poseFrame.angle(at: side.elbow, from: side.shoulder, to: side.wrist),
+               let elbow = poseFrame.landmark(side.elbow) {
+                labels.append(label(name + "elbow", angle: angle, at: elbow, poseFrame: poseFrame, size: size))
+            }
         }
 
         return labels

@@ -114,11 +114,21 @@ struct VideoAnalysisView: View {
             return "Film the whole athlete, and keep the camera still."
         }
 
-        return station == .rowing
-            ? "Film side-on to the erg, with the athlete in profile and the hips, knees and ankles "
-                + "in frame for the whole stroke. Handle and layback measurements need that view."
-            : "Film side-on, with the whole athlete in frame including the hands at the top of the "
-                + "throw. Only the first few minutes of a long clip are analysed."
+        switch station {
+        case .rowing:
+            return "Film side-on to the erg, with the athlete in profile and the hips, knees and "
+                + "ankles in frame for the whole stroke. Handle and layback measurements need that view."
+        case .skiErg:
+            return "Film side-on to the machine, with the whole athlete in profile and room above "
+                + "their hands at full reach. The hinge and handle measurements need that view."
+        case .burpeeBroadJumps:
+            return "Film side-on, square to the direction of travel, with the hands and feet in "
+                + "frame on the floor. Expect three or four reps before the athlete jumps out of "
+                + "shot — this is a technique check on a few reps, not a count of the full 80 m."
+        default:
+            return "Film side-on, with the whole athlete in frame including the hands at the top of "
+                + "the throw. Only the first few minutes of a long clip are analysed."
+        }
     }
 
     /// `PhotosPickerItem` hands back data, not a URL, so it is copied to a temp file the asset

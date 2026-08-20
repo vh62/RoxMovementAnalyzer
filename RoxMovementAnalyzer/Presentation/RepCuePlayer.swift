@@ -2,11 +2,13 @@ import AVFoundation
 import Foundation
 
 protocol RepCuePlaying {
-    func playShallowRepCue()
+    /// Speaks a station's no-rep cue. The phrase is passed in rather than baked in because more than
+    /// one station has a no-rep now — see `HyroxStation.noRepPhrase`.
+    func playNoRepCue(_ phrase: String)
 }
 
 final class NoOpRepCuePlayer: RepCuePlaying {
-    func playShallowRepCue() {}
+    func playNoRepCue(_ phrase: String) {}
 }
 
 final class SystemRepCuePlayer: NSObject, RepCuePlaying {
@@ -16,10 +18,10 @@ final class SystemRepCuePlayer: NSObject, RepCuePlaying {
         super.init()
     }
 
-    func playShallowRepCue() {
+    func playNoRepCue(_ phrase: String) {
         guard !synthesizer.isSpeaking else { return }
 
-        let utterance = AVSpeechUtterance(string: "Squat lower")
+        let utterance = AVSpeechUtterance(string: phrase)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.92
         utterance.volume = 0.85
         synthesizer.speak(utterance)

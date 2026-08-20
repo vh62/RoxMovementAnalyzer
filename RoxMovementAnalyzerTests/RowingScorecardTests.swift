@@ -9,12 +9,12 @@ final class RowingScorecardTests: XCTestCase {
 
     // MARK: - Station vocabulary
 
-    func testRowingCountsStrokesRatherThanValidReps() {
+    func testRowingShowsNoCounterBecauseTheMachineAlreadyHasOne() {
         XCTAssertEqual(HyroxStation.wallBalls.countNoun, "VALID REPS")
-        XCTAssertEqual(
-            HyroxStation.rowing.countNoun, "STROKES",
-            "every stroke counts on an erg, so calling one a valid rep would import a judging "
-                + "concept rowing does not have"
+        XCTAssertNil(
+            HyroxStation.rowing.countNoun,
+            "the erg's own monitor counts the strokes from its flywheel; a pose-estimated second "
+                + "opinion beside it could only ever be the one that was wrong"
         )
     }
 
